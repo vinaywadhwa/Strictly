@@ -7,7 +7,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/images/hero_notification_annotated.png" width="380" alt="Strictly live notification, expanded">
+  <img src="docs/images/15_chucker_final_expanded.png" width="380" alt="Strictly live notification, expanded">
 </p>
 
 ## Install (two lines)
@@ -26,7 +26,7 @@ That's the entire setup. Zero `Application` subclass changes. Zero manifest edit
 <table>
   <tr>
     <td width="50%" valign="top">
-      <img src="docs/images/detail_list_annotated.png" alt="Detail screen list view">
+      <img src="docs/images/03_detail_list.png" alt="Detail screen list view">
     </td>
     <td valign="top">
       <h3>Detail screen, de-duplicated</h3>
@@ -39,7 +39,7 @@ That's the entire setup. Zero `Application` subclass changes. Zero manifest edit
       <p>Plain-English violation type at the top. Metadata card with count, first / last seen, the thread that tripped it, plus a stable fingerprint. The first app frame is highlighted in the stack, so the line of code that caused it is one glance away.</p>
     </td>
     <td width="50%" valign="top">
-      <img src="docs/images/violation_detail_annotated.png" alt="Per-violation detail with metadata and stack trace">
+      <img src="docs/images/04_violation_detail.png" alt="Per-violation detail with metadata and stack trace">
     </td>
   </tr>
   <tr>

@@ -1,0 +1,16 @@
+*.iml
+.gradle
+/local.properties
+/.idea
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+local.properties
+**/build/
+**/.cxx/
+
+# Re-include docs (global gitignore excludes docs/)
+!docs/
+!docs/**

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="strictly_brand_primary">#7C3AED</color>
+    <color name="strictly_brand_on_primary">#FFFFFFFF</color>
+    <color name="strictly_brand_amber">#F59E0B</color>
+    <color name="strictly_brand_red">#EF4444</color>
+    <color name="strictly_surface">#FAFAFA</color>
+    <color name="strictly_surface_dark">#0F0F12</color>
+</resources>

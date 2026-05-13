@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+        Launcher theme used by StrictlyActivity. We use Material3 + a brand color.
+        We avoid `Theme.Material3.DayNight.NoActionBar` to keep the dependency on
+        the material XML theme attrs minimal — the Compose UI provides its own
+        theming. This theme exists primarily to set the status-bar / nav-bar
+        background to match Strictly's surface color so there's no flash of an
+        unrelated colour during cold start.
+    -->
+    <style name="Strictly.Theme.Launcher" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/strictly_surface</item>
+        <item name="android:statusBarColor">@color/strictly_surface</item>
+        <item name="android:navigationBarColor">@color/strictly_surface</item>
+        <item name="android:windowLightStatusBar">true</item>
+    </style>
+</resources>

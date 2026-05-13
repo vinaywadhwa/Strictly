@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Shortcut icon shown on the long-press app-icon menu. Adaptive size with the
+  brand color as the background. The whistle glyph is white.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp"
+    android:height="48dp"
+    android:viewportWidth="48"
+    android:viewportHeight="48">
+    <!-- Brand rounded square background -->
+    <path
+        android:fillColor="#7C3AED"
+        android:pathData="M10,4 L38,4 A6,6 0 0 1 44,10 L44,38 A6,6 0 0 1 38,44 L10,44 A6,6 0 0 1 4,38 L4,10 A6,6 0 0 1 10,4 Z" />
+    <!-- Whistle mouthpiece (circle) -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M18,24 m -8,0 a 8,8 0 1,0 16,0 a 8,8 0 1,0 -16,0" />
+    <!-- Whistle body (rectangle pointing right) -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M16,22 L40,22 L40,26 L16,26 Z" />
+    <!-- Whistle tip cap -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M38,18 L40,18 L40,30 L38,30 Z" />
+</vector>

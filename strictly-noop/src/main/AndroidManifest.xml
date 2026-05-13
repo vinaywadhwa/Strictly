@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Empty manifest: the no-op artifact must NOT declare the auto-init
+  ContentProvider, the detail Activity, or any notification permission.
+  Production users carry zero footprint from Strictly.
+-->
+<manifest />

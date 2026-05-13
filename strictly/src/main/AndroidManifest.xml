@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- Required on API 33+ for the live notification. We request at runtime; declaring
+         it here means the runtime request is allowed to actually show the system dialog. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <application>
+
+        <!-- Auto-init: this ContentProvider boots with the app process before
+             Application.onCreate(), so Strictly installs its StrictMode policy
+             with zero code in the consumer's Application class. Same pattern
+             as LeakCanary and Firebase. -->
+        <provider
+            android:name="com.vwap.strictly.internal.StrictlyAutoInitProvider"
+            android:authorities="${applicationId}.strictly-auto-init"
+            android:exported="false"
+            android:initOrder="100" />
+
+        <!-- "Clear all" notification action target. Explicit (we set the package
+             on the Intent), so it works on API 26+ where implicit broadcasts
+             are restricted. -->
+        <receiver
+            android:name="com.vwap.strictly.notification.ClearAllReceiver"
+            android:exported="false" />
+
+        <!-- Detail UI. Launched from the live notification, from the long-press
+             app shortcut on the home screen, or programmatically via
+             Strictly.openDetailScreen(context). -->
+        <activity
+            android:name="com.vwap.strictly.ui.StrictlyActivity"
+            android:exported="true"
+            android:taskAffinity="com.vwap.strictly.ui"
+            android:label="@string/strictly_app_name"
+            android:icon="@drawable/strictly_ic_shortcut"
+            android:roundIcon="@drawable/strictly_ic_shortcut"
+            android:theme="@style/Strictly.Theme.Launcher">
+            <!-- Launcher intent so the home-screen shortcut + share targets work. -->
+            <intent-filter>
+                <action android:name="com.vwap.strictly.action.OPEN" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
+    </application>
+</manifest>

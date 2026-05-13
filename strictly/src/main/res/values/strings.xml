@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Library names exposed in launcher / shortcut UI. Prefixed with `strictly_`
+         to avoid colliding with the consumer app's resources, per resourcePrefix. -->
+    <string name="strictly_app_name" translatable="false">Strictly</string>
+    <string name="strictly_shortcut_short_label" translatable="false">Strictly</string>
+    <string name="strictly_shortcut_long_label">View StrictMode violations</string>
+
+    <!-- Notification channel -->
+    <string name="strictly_channel_name">Strictly violations</string>
+    <string name="strictly_channel_description">
+        Live, debug-only updates whenever the app trips a StrictMode policy.
+    </string>
+
+    <!-- Notification content. Plurals are inlined to keep the file small;
+         singular vs many is selected at runtime. -->
+    <string name="strictly_notification_title_one">Strictly · %1$d unique violation</string>
+    <string name="strictly_notification_title_many">Strictly · %1$d unique violations (%2$d total)</string>
+    <string name="strictly_notification_more">+%1$d more</string>
+
+    <!-- Notification actions -->
+    <string name="strictly_action_open">Open</string>
+    <string name="strictly_action_clear">Clear all</string>
+</resources>

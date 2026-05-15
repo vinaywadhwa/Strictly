@@ -1,0 +1,80 @@
+name: Bug report
+description: Strictly mis-classified a violation, crashed, or otherwise misbehaved
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug. Please fill in what you can. The more concrete the repro, the faster it gets fixed.
+
+  - type: input
+    id: strictly-version
+    attributes:
+      label: Strictly version
+      description: Check your `build.gradle.kts` or run `./gradlew :app:dependencies | grep strictly`
+      placeholder: "0.1.0"
+    validations:
+      required: true
+
+  - type: input
+    id: android-version
+    attributes:
+      label: Android version + API level
+      placeholder: "Android 14 (API 34)"
+    validations:
+      required: true
+
+  - type: input
+    id: device
+    attributes:
+      label: Device / emulator
+      placeholder: "Pixel 7 emulator, Galaxy S24"
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+      description: One sentence is fine
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: What actually happened
+      description: Include logcat snippets, screenshots, or stack traces if you have them
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: Step-by-step. A small reproducer repo is ideal but not required
+      placeholder: |
+        1. Install Strictly 0.1.0 via the README snippet
+        2. Open the sample app
+        3. Tap "Trigger disk read"
+        4. Observe: ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: config
+    attributes:
+      label: Your StrictlyConfig (if customised)
+      description: Paste your `Strictly.install(this, StrictlyConfig(...))` call
+      render: kotlin
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Sanity checks
+      options:
+        - label: I'm using a `debugImplementation` for `strictly`, not the no-op artifact
+          required: true
+        - label: I've searched existing issues for duplicates
+          required: true

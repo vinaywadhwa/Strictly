@@ -41,10 +41,11 @@ dependencies {
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.compose.material3)
 
-    // The whole point: debug builds get the real SDK, release builds get the
-    // empty stub. Consumer apps wire it exactly like this in their gradle file.
-    debugImplementation(project(":strictly"))
-    releaseImplementation(project(":strictly-noop"))
+    // We dogfood our own published artifact. Debug builds get the real SDK
+    // from Maven Central, release builds get the no-op stub. Consumer apps
+    // wire it exactly like this in their gradle file.
+    debugImplementation("io.github.vinaywadhwa.strictly:strictly:0.1.0")
+    releaseImplementation("io.github.vinaywadhwa.strictly:strictly-noop:0.1.0")
 
     debugImplementation(libs.androidx.compose.ui.tooling)
 }

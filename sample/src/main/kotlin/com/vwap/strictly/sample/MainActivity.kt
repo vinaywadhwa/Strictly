@@ -97,8 +97,8 @@ private fun SampleHome() {
 
         OutlinedButton(
             modifier = Modifier.fillMaxWidth(),
-            onClick = { Strictly.clear() },
-        ) { Text("Clear violations") }
+            onClick = { Strictly.clearCurrent() },
+        ) { Text("Clear current session") }
     }
 }
 

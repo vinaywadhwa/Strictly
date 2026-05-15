@@ -1,0 +1,60 @@
+name: Feature request
+description: Propose a new feature or behavioural change
+title: "[feat] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the suggestion. The goal of this template is to surface the *use case* up front. Solution shape is secondary.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What's the problem you're hitting?
+      description: Describe the situation in your own app. "I want X" or "Strictly currently does Y but I'd prefer Z"
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What change would you propose?
+      description: API sketch is great if you have one. Otherwise just describe behaviour
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What else have you considered?
+      description: Workarounds you've tried. Other libraries you've looked at. Why those didn't fit
+
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Which surface does this touch?
+      multiple: true
+      options:
+        - Public API
+        - Notification
+        - Compose UI
+        - HTTP debug server
+        - MCP server (strictly-mcp)
+        - Fingerprint / classifier
+        - Persistence / sessions
+        - Build setup / Gradle
+        - Documentation
+        - Other (explain in proposal)
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Sanity checks
+      options:
+        - label: I've searched existing issues for duplicates
+          required: true
+        - label: This is not a security issue (those go via SECURITY.md)
+          required: true

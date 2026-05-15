@@ -7,6 +7,14 @@
 </p>
 
 <p align="center">
+  <a href="https://central.sonatype.com/artifact/io.github.vinaywadhwa.strictly/strictly"><img src="https://img.shields.io/maven-central/v/io.github.vinaywadhwa.strictly/strictly?label=maven%20central&color=blue" alt="Maven Central"></a>
+  <a href="https://www.npmjs.com/package/strictly-mcp"><img src="https://img.shields.io/npm/v/strictly-mcp?label=strictly-mcp&color=cb3837" alt="npm"></a>
+  <a href="https://github.com/vinaywadhwa/Strictly/actions/workflows/ci.yml"><img src="https://github.com/vinaywadhwa/Strictly/actions/workflows/ci.yml/badge.svg?branch=main" alt="ci"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-green.svg" alt="Apache 2.0"></a>
+  <img src="https://img.shields.io/badge/min%20sdk-21-orange.svg" alt="min sdk 21">
+</p>
+
+<p align="center">
   <img src="docs/images/15_chucker_final_expanded.png" width="380" alt="Strictly live notification, expanded">
 </p>
 
@@ -26,20 +34,38 @@ That's the entire setup. Zero `Application` subclass changes. Zero manifest edit
 <table>
   <tr>
     <td width="50%" valign="top">
-      <img src="docs/images/03_detail_list.png" alt="Detail screen list view">
+      <img src="docs/images/v3_session_list.png" alt="Sessions list showing 4 sessions across time">
     </td>
     <td valign="top">
-      <h3>Detail screen, de-duplicated</h3>
-      <p>Every violation deduped into a single row with an occurrence count badge. Severity-first ordering. Tap the bookmark icon to <b>mark baseline</b>, useful on legacy codebases where you want to flag only new violations.</p>
+      <h3>Sessions across process lifetimes</h3>
+      <p>Every app launch starts a new session. The list shows them most-recently-active first, with a "Live" chip on the current one. Tap any row to drill into the violations that fired during that run. The current session is reactive: violations stream in as they happen.</p>
     </td>
   </tr>
   <tr>
     <td valign="top">
+      <h3>Session view, de-duplicated</h3>
+      <p>Every violation deduped into a single row with an occurrence count badge. Severity-first ordering. The first app-frame is shown inline so you can scan the worst offender at a glance. Share-icon exports the session as JSON or Markdown for PR comments.</p>
+    </td>
+    <td width="50%" valign="top">
+      <img src="docs/images/v3_session_view.png" alt="Session view with deduplicated violation rows">
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="docs/images/04_violation_detail.png" alt="Per-violation detail with metadata and stack trace">
+    </td>
+    <td valign="top">
       <h3>Per-violation detail</h3>
       <p>Plain-English violation type at the top. Metadata card with count, first / last seen, the thread that tripped it, plus a stable fingerprint. The first app frame is highlighted in the stack, so the line of code that caused it is one glance away.</p>
     </td>
+  </tr>
+  <tr>
+    <td valign="top">
+      <h3>Settings + MCP setup, copy-paste ready</h3>
+      <p>The settings sheet has a toggle for the opt-in HTTP debug server (loopback only, off by default). Once on, the Connect to your AI agent card has the exact <code>adb forward</code> command. Plus the <code>claude mcp add</code> one-liner. Plus a drop-in <code>mcp.json</code> snippet for any MCP client. Tap the copy icon and paste.</p>
+    </td>
     <td width="50%" valign="top">
-      <img src="docs/images/04_violation_detail.png" alt="Per-violation detail with metadata and stack trace">
+      <img src="docs/images/v3_settings_sheet.png" alt="Settings sheet with HTTP server toggle plus MCP setup recipe">
     </td>
   </tr>
   <tr>
@@ -106,10 +132,12 @@ class MyApplication : Application() {
                     "com.acme.thirdparty.",
                 ),
                 detectedTypes = ViolationType.entries.toSet() - ViolationType.ResourceMismatch,
-                maxStoredViolations = 1000,
+                maxStoredSessions = 50,
                 notificationUpdateDebounceMillis = 500,
                 registerAppShortcut = true,
-                baselineModeEnabled = true,
+                httpDebugPort = 8765,
+                httpDebugAutoStart = false,
+                httpDebugSecret = null,
             ),
         )
     }
@@ -121,10 +149,12 @@ class MyApplication : Application() {
 | `appPackages` | inferred from `applicationId` | Frames matching these prefixes are highlighted, plus preferred for fingerprinting |
 | `ignoredPackages` | small list of known-noisy framework SDKs | Violations whose first app-frame is in this list are silently dropped |
 | `detectedTypes` | all | Trim to skip noisy detectors |
-| `maxStoredViolations` | 500 | Bounded LRU. Oldest evicted when full |
+| `maxStoredSessions` | 20 | Bounded LRU of archived sessions on disk. Oldest evicted when full |
 | `notificationUpdateDebounceMillis` | 500 | Maximum notification update frequency under load |
 | `registerAppShortcut` | true | Adds the long-press shortcut on launchers that support it |
-| `baselineModeEnabled` | false | Mark current set as "accepted". Only new violations flagged afterward |
+| `httpDebugPort` | 8765 | Port for the opt-in HTTP debug server. Change if 8765 is taken on your device |
+| `httpDebugAutoStart` | false | Auto-start the HTTP server on `Strictly.install` (eg: useful in CI). Otherwise off until toggled |
+| `httpDebugSecret` | null | Optional `X-Strictly-Secret` header value. Belt-and-braces over loopback isolation |
 
 ## Why Strictly
 
@@ -148,6 +178,9 @@ Pairs naturally with [LeakCanary](https://square.github.io/leakcanary/) (memory 
 | Auto-init | yes | yes | yes |
 | App shortcut | yes | yes | yes |
 | No-op release artifact | yes | yes | yes |
+| Cross-session history | no | no | yes (LRU on disk) |
+| MCP server for AI agents | no | no | yes (`strictly-mcp` on npm) |
+| Per-session export (JSON / Markdown) | no | no | yes |
 
 ## Requirements
 
@@ -175,17 +208,22 @@ Strictly.DebugHttp.running                 // StateFlow<Boolean>
 <summary><b>How it works</b></summary>
 
 ```
-StrictMode penaltyListener  ->  classify  ->  fingerprint  ->  ViolationStore (LRU)
-                                                                      |
-                                                                      +->  LiveNotificationController (debounced)
-                                                                      |
-                                                                      +->  StrictlyActivity (Compose StateFlow)
+StrictMode listener  ->  classify  ->  fingerprint  ->  SessionStore (LRU on disk + StateFlow)
+                                                                |
+                                                                +->  LiveNotificationController (debounced 500ms)
+                                                                |
+                                                                +->  StrictlyActivity (Compose state machine)
+                                                                |
+                                                                +->  StrictlyHttpServer (opt-in, loopback)  ->  strictly-mcp
 ```
 
-- A single-thread executor handles the `OnThreadViolationListener` plus `OnVmViolationListener` callbacks. Work per callback is small: classify the violation subtype by simple-class-name, map to a domain model, compute a fingerprint over the violation type plus the first 3 app-frames (classes only, no line numbers), upsert into the store.
-- The store is a `StateFlow<Map<fingerprint, Violation>>` so both the notification plus the Compose UI subscribe without polling.
+- A single-thread executor handles the `OnThreadViolationListener` plus `OnVmViolationListener` callbacks. Per-callback work stays small. Classify the subtype by simple-class-name. Map to a domain model. Compute a fingerprint over the violation type plus the first 3 app-frames (classes only, no line numbers). Upsert into the store.
+- `SessionStore` exposes the live session as a `StateFlow<Map<fingerprint, Violation>>`. Three surfaces subscribe to that flow. The notification. The Compose UI. The HTTP debug server. No polling anywhere.
 - The notification subscribes through a `debounce(500ms)` flow. A burst of 200 identical violations in 50ms produces one notification update.
+- Past sessions persist to an LRU on disk (bounded by `maxStoredSessions`). On launch the index loads first. Individual session bodies load on demand.
+- The HTTP debug server is opt-in. Off by default. Loopback-only. Serves the same JSON the file persister writes. The `strictly-mcp` Node process wraps it as three MCP tools.
 - Self-instrumentation: the listener body runs inside `StrictMode.allowThreadDiskReads()` so Strictly never trips its own policy.
+- The on-disk schema is pinned by a golden test. Bumping it requires a deliberate code change plus a snapshot update.
 
 </details>
 

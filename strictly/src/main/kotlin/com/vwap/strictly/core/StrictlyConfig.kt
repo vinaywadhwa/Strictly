@@ -35,6 +35,19 @@ data class StrictlyConfig(
     val ignoredPackages: List<String> = DEFAULT_IGNORED_PACKAGES,
 
     /**
+     * Package prefixes treated as "framework noise" when picking a fallback origin
+     * frame for display. When a violation's stack has no [appPackages] frame
+     * (eg: Firebase auto-init via ContentProvider, before [Application.onCreate]),
+     * Strictly surfaces the first frame whose class doesn't start with any of
+     * these prefixes. That gives the developer the actually-actionable origin,
+     * eg: `FileStore.<init>:81` instead of "unknown origin".
+     *
+     * Override only if you ship code under one of these prefixes intentionally
+     * and want those frames to count as your own.
+     */
+    val platformPackages: List<String> = DEFAULT_PLATFORM_PACKAGES,
+
+    /**
      * Which violation types to detect. Default = everything. Trim this if a
      * particular detector is too noisy (eg `ResourceMismatch` for theme libs).
      */
@@ -71,11 +84,34 @@ data class StrictlyConfig(
     val registerAppShortcut: Boolean = true,
 
     /**
-     * Whether to surface a baseline-style "new violations only" mode in the UI.
-     * When enabled, you can mark the current set as "accepted" and the detail
-     * screen highlights only violations added after that point.
+     * Maximum number of *archived* sessions kept on disk. The live session is
+     * never evicted. Default 20 is plenty for active-development triage.
      */
-    val baselineModeEnabled: Boolean = true,
+    @IntRange(from = 1, to = 200)
+    val maxStoredSessions: Int = 20,
+
+    /**
+     * Default port for the debug HTTP server. Server is not started unless the
+     * developer explicitly opts in via the in-app settings sheet or via
+     * [httpDebugAutoStart]. Always bound to 127.0.0.1.
+     */
+    @IntRange(from = 1024, to = 65535)
+    val httpDebugPort: Int = 8765,
+
+    /**
+     * If true, start the debug HTTP server automatically on [Strictly.install].
+     * False by default. Aimed at CI builds where the developer wants the server
+     * up without anyone tapping the toggle.
+     */
+    val httpDebugAutoStart: Boolean = false,
+
+    /**
+     * Optional shared secret required as an `X-Strictly-Secret` header on every
+     * HTTP request. Default null (no secret check). The server already binds
+     * loopback-only, so a secret is double-protection rather than a hard
+     * requirement.
+     */
+    val httpDebugSecret: String? = null,
 
 ) {
     companion object {
@@ -89,6 +125,27 @@ data class StrictlyConfig(
             "com.android.internal.",
             // Google Play Services init reads a few SharedPreferences eagerly.
             "com.google.android.gms.",
+        )
+
+        /**
+         * Default platform-noise prefixes used by [platformPackages]. Covers the
+         * Android framework, JDK, Kotlin runtime, and Strictly itself. Keep this
+         * tight: the more we exclude here, the more "actionable" the fallback
+         * frame is.
+         */
+        val DEFAULT_PLATFORM_PACKAGES: List<String> = listOf(
+            "android.",
+            "androidx.",
+            "java.",
+            "javax.",
+            "kotlin.",
+            "kotlinx.",
+            "libcore.",
+            "dalvik.",
+            "sun.",
+            "com.android.internal.",
+            "com.android.server.",
+            "com.vwap.strictly.",
         )
     }
 }

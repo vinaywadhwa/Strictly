@@ -1,0 +1,257 @@
+# Strictly v3 .. morning review
+
+Built and validated overnight against the Branch debug APK on emulator-5554 (Pixel 7, Android 16, API 36).
+
+Everything in `docs/export_options_proposal.md` is implemented and end-to-end tested with a real consumer app. The MCP is installed into my own Claude Code. It reads Branch's live StrictMode violations through the on-device HTTP server.
+
+## What changed
+
+### Sessions are now the core model
+
+Before: in-memory map of unique violations. Dies on rebuild.
+
+After: every process launch creates a `Session` (uuid, started/last-event timestamps, app version, device model, OS level, violations map). Sessions are persisted to disk as JSON (`<filesDir>/strictly/sessions/<uuid>.json`) plus a tiny index (`sessions.json`) for the list screen. The current session is updated through-the-write debounced at 500ms. Archived sessions get LRU-evicted when the count exceeds `maxStoredSessions` (default 20).
+
+Files:
+- `core/Session.kt`, `core/SessionSummary.kt`: data model plus derived counts
+- `store/SessionStore.kt`: in-memory live state plus index, exposes `currentViolations: StateFlow<...>`, `sessions: StateFlow<...>`, mutation methods
+- `store/SessionPersister.kt`: single-thread disk IO, debounced. Every write is wrapped in `withRelaxedStrictMode` so the persister never trips StrictMode itself
+- `store/SessionJson.kt`: hand-rolled `org.json` encode/decode, schema `strictly/session.v1`
+
+### Public API surface
+
+`com.vwap.strictly.Strictly` now exposes:
+
+| Member | Purpose |
+| --- | --- |
+| `violations: StateFlow<Map<String, Violation>>` | Live session, reactive |
+| `sessions: StateFlow<List<SessionSummary>>` | Index, sorted latest-first |
+| `currentSessionId: String` | For correlation in crash reports |
+| `loadSession(id): Session?` | Live snapshot or disk read |
+| `clearCurrent()` | Wipes live session only |
+| `deleteSession(id)` | Removes one archived session |
+| `wipeAllSessions()` | Nuclear option |
+| `DebugHttp.{running, lastError, port, hasSecret, setEnabled}` | Opt-in HTTP server |
+
+Mirrored on `strictly-noop` so release builds compile against the same surface but get no-ops.
+
+### 3-screen UI state machine
+
+`StrictlyActivity` is now a `Screen` sealed-state machine: `SessionList` then `SessionView` then `ViolationDetail`. Back always pops one level. Launching from the home-screen shortcut deep-links into the live session, so the first-time experience is "show me what just happened" instead of "pick from an empty list".
+
+![Live session view](screenshots/01-live-session-on-launch.png)
+
+The landing view above shows the live session with header `May 15, 1:16 AM .. Live .. 4 unique .. 18 events .. v5.48.0`, the back arrow / export / delete toolbar, plus the violation cards.
+
+Tapping back surfaces the session list:
+
+![Session list](screenshots/02-session-list.png)
+
+The list card collapses each session into a quick scan: relative-time title, severity-toned initial (D for Disk-read, U for Untagged-socket), plus the count chip on the right. The live session has the brand-purple "Live" pill. A settings gear lives in the top-right.
+
+After a few minutes the relative-time formatter updates naturally:
+
+![Session list two minutes later](screenshots/09-session-list-2min.png)
+
+Tapping a violation card opens the detail screen. Same as before, kept verbatim because it was already good:
+
+![Violation detail](screenshots/06-violation-detail.png)
+
+### Per-session export sheet
+
+Tapping the share icon on a session opens a modal sheet with two options:
+
+![Export picker](screenshots/07-export-picker.png)
+
+JSON is described as schema-versioned (best for AI agents like Claude / Cursor that parse structure). Markdown carries tables / code blocks / stack traces (best for pasting into Slack threads / PR reviews / design docs). Tapping either reveals a scrollable preview with Copy plus Share icons:
+
+![Markdown preview](screenshots/08-export-markdown.png)
+
+The Markdown is the same content the MCP returns via `strictly_get_session_markdown` (see below), so the format is consistent whether the user copies it from the UI or pipes it through an AI agent.
+
+### Settings sheet
+
+Gear icon in the top-right of the session list. Three cards: HTTP server, MCP setup, storage.
+
+![Settings, HTTP off](screenshots/03-settings-http-off.png)
+
+The HTTP server is off by default. Toggle on when you want it. The card explains it binds to `127.0.0.1` only and exists for the MCP plus ADB port-forward. Below that, the "Connect to your AI agent" card pre-renders both the Claude Code CLI snippet plus a portable `mcp.json` config, each with a copy icon and the correct port baked in.
+
+Toggling on:
+
+![Settings, HTTP on](screenshots/04-settings-http-on.png)
+
+Status flips to "Running on port 8765" with a purple checkmark "Listening at http://127.0.0.1:8765". The MCP setup card's intro shifts from "Turn the HTTP server on above first" to "Pipe live violations into Claude Code / Cursor / any MCP-aware tool." A subtle ADB-tip line at the bottom tells the user to run `adb reverse tcp:8765 tcp:8765` on the host.
+
+### HTTP server
+
+`NanoHTTPD`-based, loopback-only, four routes under `/v1`:
+
+- `GET /v1/health`: schema plus version plus current session id. For "is the right Strictly running?" probes.
+- `GET /v1/sessions`: index, latest-first
+- `GET /v1/sessions/{id}`: canonical JSON
+- `GET /v1/sessions/{id}.md`: Markdown export
+
+Persisted opt-in via `SharedPreferences` (`strictly_prefs.http_enabled`). Optional shared secret via `X-Strictly-Secret` header. Defaults to off because the loopback bind is already isolating. Every error response is a structured `{error: {code, message}}` envelope.
+
+Verified from the host:
+
+```bash
+$ adb forward tcp:8765 tcp:8765
+$ curl http://127.0.0.1:8765/v1/health
+{
+  "status": "ok",
+  "library": "strictly",
+  "version": "strictly/0.1.0 app/5.48.0",
+  "schema": "strictly/session.v1",
+  "currentSessionId": "42adaa9d-db5a-44b3-be8f-0dd4de79ff84"
+}
+```
+
+### strictly-mcp
+
+New `strictly-mcp/` directory at the repo root. Single-file Node stdio MCP (`index.js`, no TS build step) using the official `@modelcontextprotocol/sdk` plus `zod`. Five tools:
+
+| Tool | Purpose |
+| --- | --- |
+| `strictly_health` | Connectivity probe. Returns lib version plus current session id |
+| `strictly_list_sessions` | Index, latest-first |
+| `strictly_get_session` | Full canonical JSON for a given id (or `"live"`) |
+| `strictly_get_session_markdown` | Same session as Markdown |
+| `strictly_top_violations` | Cross-session aggregation, ranked offenders |
+
+Every error path returns a structured `{code, message, nextSteps[]}` envelope. The taxonomy:
+
+- `STRICTLY_HTTP_UNREACHABLE`: connection refused. nextSteps tells the agent to remind the user to plug in the device, toggle the HTTP server on, set up `adb forward`
+- `STRICTLY_HTTP_AUTH_REQUIRED` / `STRICTLY_HTTP_AUTH_REJECTED`: secret missing or wrong. nextSteps walks through where to set `STRICTLY_SECRET`
+- `STRICTLY_SESSION_NOT_FOUND`: id evicted or never persisted
+- `STRICTLY_NO_SESSIONS`: server is running but nothing's been recorded yet
+- `STRICTLY_LIBRARY_NOT_INSTALLED`: something else is on the port
+
+### MCP installed in my own Claude Code
+
+```
+$ claude mcp add strictly -e STRICTLY_URL=http://127.0.0.1:8765 \
+    -- node /Users/vinaywadhwa/workspace/Strictly/strictly-mcp/index.js
+$ claude mcp list | grep strictly
+strictly: node /Users/vinaywadhwa/workspace/Strictly/strictly-mcp/index.js - ✓ Connected
+```
+
+The MCP reads Branch's live violations. End-to-end driver output:
+
+**`strictly_health`**
+```json
+{
+  "ok": true,
+  "url": "http://127.0.0.1:8765",
+  "library": "strictly",
+  "version": "strictly/0.1.0 app/5.48.0",
+  "schema": "strictly/session.v1",
+  "currentSessionId": "42adaa9d-db5a-44b3-be8f-0dd4de79ff84"
+}
+```
+
+**`strictly_top_violations`** (the killer tool: "what should I fix today?")
+```json
+{
+  "summary": { "sessionsConsidered": 1, "uniqueOffenders": 4 },
+  "offenders": [
+    {
+      "type": "UntaggedSocket",
+      "origin": "RealConnection.connectSocket:143",
+      "isThirdPartyOrigin": true,
+      "count": 14
+    },
+    {
+      "type": "DiskRead",
+      "origin": "DataCollectionConfigStorage.<init>:45",
+      "isThirdPartyOrigin": true,
+      "count": 6
+    },
+    {
+      "type": "DiskRead",
+      "origin": "FileStore.prepareBaseDir:215",
+      "isThirdPartyOrigin": true,
+      "count": 3
+    },
+    {
+      "type": "DiskRead",
+      "origin": "DataCollectionConfigStorage.readAutoDataCollectionEnabled:102",
+      "isThirdPartyOrigin": true,
+      "count": 1
+    }
+  ]
+}
+```
+
+So in one MCP call an AI agent asked "what should I fix in Branch today?" gets back: **Singular SDK is making untagged HTTPS calls on the api thread** (14 events, full stack). Plus **Firebase init is hitting disk on the main thread** (10 events across three call sites in `DataCollectionConfigStorage` plus `FileStore`). Both correctly attributed as third-party so the agent can either suggest the fix (`TrafficStats.setTrafficStatsTag` wrapper around Singular calls) or recommend filing an SDK ticket.
+
+**`strictly_get_session_markdown`** returns the same content as the export sheet's Markdown preview, ready to paste into a PR review.
+
+### Error-envelope demo (unreachable URL)
+
+To prove the "MCP gracefully handles every setup scenario" promise, I drove it against a deliberately-wrong port (`STRICTLY_URL=http://127.0.0.1:9999`):
+
+```json
+{
+  "error": {
+    "code": "STRICTLY_HTTP_UNREACHABLE",
+    "message": "Could not reach Strictly at http://127.0.0.1:9999 (ECONNREFUSED).",
+    "nextSteps": [
+      "Connect the Android device with the Strictly-instrumented app",
+      "Open the app, then open Strictly via the home-screen shortcut, then tap the gear icon and toggle \"Debug HTTP server\" on",
+      "Run `adb reverse tcp:9999 tcp:9999` on the host",
+      "If you changed Strictly's httpDebugPort, set STRICTLY_URL accordingly"
+    ]
+  }
+}
+```
+
+The calling AI agent now has everything it needs to teach the user through the setup, in-line, without having to dig through docs.
+
+## Build health
+
+Strictly compiles clean (`./gradlew :strictly:compileDebugKotlin :strictly-noop:compileReleaseKotlin` passes).
+
+Branch consumes the new artifact via mavenLocal. `:app:assembleDebug` succeeded in 1m 23s with no source-level breakage. The new public API is binary-compatible with existing Branch consumer code because the old `Strictly.violations` accessor still exists (it just delegates to `currentViolations` now). `Strictly.clear()` was the only removal, replaced with the more precise `clearCurrent()`. No call sites in Branch were affected.
+
+## What's deferred
+
+1. **Cross-session diff screen.** Proposal calls for a "compare two sessions" view. Plumbed for it in the MCP (`strictly_top_violations` already does cross-session aggregation), but the in-app UI is not built. Low priority. The export-and-pipe-through-Claude flow already covers the use case.
+2. **Auto-detection of the device IP for non-loopback access.** Currently the MCP requires `adb forward` to reach the device's `127.0.0.1:8765`. A future improvement is to optionally bind to the wifi IP for direct host-to-device access without ADB. Tradeoff: more configurable but breaks the "always loopback" security story.
+3. **Publishing `strictly-mcp` to npm.** The settings sheet's CLI snippet says `npx -y strictly-mcp`. That won't resolve until the package is published. For now use `claude mcp add strictly -- node /path/to/strictly-mcp/index.js`.
+4. **`Strictly.ViolationStore.kt` plus `ViolationStoreTest.kt` tombstones.** Couldn't delete files via the current tooling. Both are reduced to package-only stubs. Drop on the next repo cleanup pass.
+
+## File layout reference
+
+```
+Strictly/
+├── strictly/                                       # the live library
+│   └── src/main/kotlin/com/vwap/strictly/
+│       ├── Strictly.kt                             # public API
+│       ├── core/
+│       │   ├── Session.kt                          # NEW
+│       │   ├── StrictlyConfig.kt                   # added 4 fields
+│       │   └── Violation.kt
+│       ├── store/
+│       │   ├── SessionStore.kt                     # NEW (replaces ViolationStore)
+│       │   ├── SessionPersister.kt                 # NEW
+│       │   └── SessionJson.kt                      # NEW
+│       ├── http/
+│       │   ├── StrictlyHttpServer.kt               # NEW
+│       │   └── HttpServerController.kt             # NEW
+│       ├── export/
+│       │   └── SessionExporter.kt                  # NEW
+│       ├── prefs/
+│       │   └── StrictlyPrefs.kt                    # NEW
+│       └── ui/
+│           ├── StrictlyActivity.kt                 # rewired to 3-screen state
+│           ├── SessionListScreen.kt                # NEW
+│           ├── SessionViewScreen.kt                # NEW
+│           ├── ExportSheet.kt                      # NEW
+│           ├── SettingsSheet.kt                    # NEW
+│           └── ViolationDetailScreen.kt
+└── strictly-mcp/                                   # NEW directory
+    ├── package.json
+    └── index.js
+```

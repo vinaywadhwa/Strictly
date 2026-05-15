@@ -14,8 +14,8 @@
 
 ```kotlin
 dependencies {
-    debugImplementation("com.vwap.strictly:strictly:0.1.0")
-    releaseImplementation("com.vwap.strictly:strictly-noop:0.1.0")
+    debugImplementation("io.github.vinaywadhwa.strictly:strictly:0.1.0")
+    releaseImplementation("io.github.vinaywadhwa.strictly:strictly-noop:0.1.0")
 }
 ```
 
@@ -60,7 +60,31 @@ That's the entire setup. Zero `Application` subclass changes. Zero manifest edit
 | **Live notification** | As soon as the first violation fires | Pull down the shade |
 | **Detail screen** | On demand | Tap the notification. Tap the app shortcut. Call `Strictly.openDetailScreen(context)` from code |
 | **Long-press shortcut** | On launchers that support shortcuts | Long-press your app icon |
+| **Sessions list** | After at least one violation | Back-arrow from the live session. Or open from a cold launch |
+| **Per-session export** | Always | Share-icon on a session: JSON or Markdown |
 | **`Strictly.violations` flow** | Anywhere in code | `StateFlow<Map<fingerprint, Violation>>` for embedding into a debug menu |
+| **HTTP debug server** | Opt-in, settings toggle | Loopback `127.0.0.1:8765`. Surfaces sessions to the MCP plus any HTTP client |
+
+## Ask your AI agent
+
+Strictly ships a companion MCP server, [`strictly-mcp`](strictly-mcp/), that wraps the on-device HTTP server into three Model Context Protocol tools. Once wired up, ask your coding agent things like:
+
+> "What disk reads is my app doing on the main thread right now?"
+>
+> "Diff the violations between this session and the previous one."
+>
+> "Show me the stack for that untagged socket and propose a fix."
+
+Setup is two commands plus a toggle:
+
+```sh
+adb forward tcp:8765 tcp:8765
+claude mcp add strictly -e STRICTLY_URL=http://127.0.0.1:8765 -- npx -y strictly-mcp
+```
+
+Then in the app, open Strictly via the home-screen shortcut, tap the gear icon. Toggle "Debug HTTP server" on. The settings sheet also shows ready-to-paste `mcp.json` for non-Claude clients.
+
+The server binds loopback only. Off by default. No data leaves the device.
 
 ## Production safety
 
@@ -134,11 +158,17 @@ Pairs naturally with [LeakCanary](https://square.github.io/leakcanary/) (memory 
 ## Programmatic entry points
 
 ```kotlin
-Strictly.openDetailScreen(context)   // jump straight to the UI
-Strictly.markBaseline()              // freeze current set as "accepted"
-Strictly.clear()                     // wipe the store and dismiss the notification
-Strictly.violations                  // StateFlow<Map<fingerprint, Violation>>
-Strictly.isLiveListeningSupported    // false on API < 28
+Strictly.openDetailScreen(context)         // jump straight to the UI
+Strictly.violations                        // StateFlow<Map<fingerprint, Violation>> for the live session
+Strictly.sessions                          // StateFlow<List<SessionSummary>> across all persisted sessions
+Strictly.currentSessionId                  // String, useful for correlating with crash reports
+Strictly.loadSession(id)                   // Session? from live or archived storage
+Strictly.clearCurrent()                    // wipe the live session
+Strictly.deleteSession(id)                 // delete a specific archived session
+Strictly.wipeAllSessions()                 // nuke everything from disk plus memory
+Strictly.isLiveListeningSupported          // false on API < 28
+Strictly.DebugHttp.setEnabled(true)        // turn on the HTTP server programmatically
+Strictly.DebugHttp.running                 // StateFlow<Boolean>
 ```
 
 <details>
@@ -180,9 +210,9 @@ Then call `Strictly.install(this, yourConfig)` from your `Application.onCreate`.
 ## Roadmap
 
 - Baseline file checked into the repo, with `assertNoNewViolations()` for instrumented tests
-- Export violations as JSON / CSV for sharing in PRs
-- Optional Room-backed store for cross-session persistence
+- Cross-session diff screen: "what's new since the last clean run"
 - Filter chips in the detail screen (by type, by package, by severity)
+- A first-class CI mode that fails the build on net-new violations against a checked-in baseline
 
 ## License
 

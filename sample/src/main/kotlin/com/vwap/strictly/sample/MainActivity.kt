@@ -97,11 +97,6 @@ private fun SampleHome() {
 
         OutlinedButton(
             modifier = Modifier.fillMaxWidth(),
-            onClick = { Strictly.markBaseline() },
-        ) { Text("Mark current set as baseline") }
-
-        OutlinedButton(
-            modifier = Modifier.fillMaxWidth(),
             onClick = { Strictly.clear() },
         ) { Text("Clear violations") }
     }

@@ -13,7 +13,7 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import com.vwap.strictly.R
 import com.vwap.strictly.core.Violation
-import com.vwap.strictly.store.ViolationStore
+import com.vwap.strictly.store.SessionStore
 import com.vwap.strictly.ui.StrictlyActivity
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.FlowPreview
@@ -45,7 +45,7 @@ import kotlinx.coroutines.launch
 internal class LiveNotificationController(
     private val context: Context,
     private val scope: CoroutineScope,
-    private val store: ViolationStore,
+    private val store: SessionStore,
     private val debounceMillis: Long,
     private val liveUpdates: Boolean,
 ) {
@@ -56,7 +56,7 @@ internal class LiveNotificationController(
         ensureChannel()
         collectJob?.cancel()
         collectJob = scope.launch {
-            val flow = store.violations
+            val flow = store.currentViolations
                 .map { it.values.toList().sortedByDescending { v -> v.lastOccurrenceAtMillis } }
                 .distinctUntilChanged { old, new -> old.size == new.size && old.firstOrNull()?.id == new.firstOrNull()?.id }
 
@@ -194,7 +194,7 @@ internal class LiveNotificationController(
     private fun formatInboxLine(v: Violation): String {
         val count = "×${v.occurrenceCount}"
         val type = shortType(v)
-        val where = v.firstAppFrame?.formatShort() ?: "unknown"
+        val where = v.firstActionableFrame?.formatShort() ?: "unknown"
         return "$count  $type · $where"
     }
 

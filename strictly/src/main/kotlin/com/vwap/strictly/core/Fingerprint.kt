@@ -14,11 +14,10 @@ import java.security.MessageDigest
  *   would always look the same and we'd never tell apart "preferences read"
  *   from "asset read."
  * - We exclude line numbers from the hash. A trivial edit two lines above the
- *   violation site would otherwise invalidate the fingerprint and break any
- *   baseline a team has checked in. Class + method is the right granularity
- *   for a baseline that survives refactors.
+ *   violation site would otherwise invalidate the fingerprint. Class + method
+ *   is the right granularity for an identity that survives refactors.
  * - SHA-1 is fine here: not security-sensitive, just an identity. Stays short
- *   enough that a sample baseline file is readable.
+ *   enough to read at a glance in exports.
  */
 internal object Fingerprint {
 

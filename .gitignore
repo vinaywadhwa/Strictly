@@ -11,6 +11,14 @@ local.properties
 **/build/
 **/.cxx/
 
+# Node MCP server
+strictly-mcp/node_modules/
+strictly-mcp/package-lock.json
+strictly-mcp/.npmrc
+
+# sed -i.bak leftovers
+*.bak
+
 # Re-include docs (global gitignore excludes docs/)
 !docs/
 !docs/**

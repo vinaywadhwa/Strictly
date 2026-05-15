@@ -9,6 +9,7 @@ import com.vwap.strictly.core.StackFrame
 import com.vwap.strictly.core.StrictlyConfig
 import com.vwap.strictly.core.Violation
 import com.vwap.strictly.core.ViolationType
+import com.vwap.strictly.internal.StrictlyRuntime
 import java.util.concurrent.Executor
 
 /**
@@ -103,6 +104,8 @@ internal class StrictModeInstaller(
 
             val frames = raw.stackTrace.map { it.toStackFrame() }
             val firstAppFrame = frames.firstOrNull { f -> isAppFrame(f.className) }
+            val firstActionableFrame = firstAppFrame
+                ?: frames.firstOrNull { f -> !isPlatformFrame(f.className) }
 
             if (firstAppFrame != null && config.ignoredPackages.any { firstAppFrame.className.startsWith(it) }) {
                 return
@@ -116,10 +119,11 @@ internal class StrictModeInstaller(
                 message = raw.message.orEmpty(),
                 stackTrace = frames,
                 firstAppFrame = firstAppFrame,
+                firstActionableFrame = firstActionableFrame,
                 firstOccurrenceAtMillis = now,
                 lastOccurrenceAtMillis = now,
                 occurrenceCount = 1,
-                threadName = Thread.currentThread().name,
+                threadName = StrictlyRuntime.offendingThreadName.get() ?: Thread.currentThread().name,
                 processName = "main", // refined by caller via process tag if needed
             )
             onViolation(violation)
@@ -134,6 +138,10 @@ internal class StrictModeInstaller(
 
     private fun isAppFrame(className: String): Boolean {
         return config.appPackages.any { className.startsWith(it) }
+    }
+
+    private fun isPlatformFrame(className: String): Boolean {
+        return config.platformPackages.any { className.startsWith(it) }
     }
 
     private fun StackTraceElement.toStackFrame() = StackFrame(

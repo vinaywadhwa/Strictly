@@ -1,0 +1,49 @@
+{
+  "name": "strictly-mcp",
+  "version": "0.1.0",
+  "description": "MCP server for Strictly (Android StrictMode UI). Proxies the on-device debug HTTP server into MCP tools so AI agents can read live violations.",
+  "type": "module",
+  "main": "index.js",
+  "bin": {
+    "strictly-mcp": "index.js"
+  },
+  "scripts": {
+    "start": "node index.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "zod": "^3.23.0"
+  },
+  "license": "Apache-2.0",
+  "author": {
+    "name": "Vinay Wadhwa",
+    "url": "https://github.com/vinaywadhwa"
+  },
+  "homepage": "https://github.com/vinaywadhwa/Strictly/tree/main/strictly-mcp#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vinaywadhwa/Strictly.git",
+    "directory": "strictly-mcp"
+  },
+  "bugs": {
+    "url": "https://github.com/vinaywadhwa/Strictly/issues"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "android",
+    "strictmode",
+    "claude",
+    "cursor",
+    "ai-tools",
+    "debugging",
+    "strictly"
+  ],
+  "files": [
+    "index.js",
+    "README.md"
+  ]
+}

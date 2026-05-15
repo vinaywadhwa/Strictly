@@ -6,9 +6,9 @@ import android.content.Intent
 import com.vwap.strictly.Strictly
 
 /**
- * Broadcast target for the "Clear all" notification action. Wipes the store,
- * which causes [LiveNotificationController] to observe an empty map and dismiss
- * the notification.
+ * Broadcast target for the "Clear all" notification action. Clears the current
+ * session, which causes [LiveNotificationController] to observe an empty map
+ * and dismiss the notification. Archived sessions are untouched.
  *
  * Lives outside the manifest registration list because we register it as a
  * package-scoped broadcast (we explicitly set the target package on the Intent
@@ -17,6 +17,6 @@ import com.vwap.strictly.Strictly
  */
 class ClearAllReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
-        Strictly.clear()
+        Strictly.clearCurrent()
     }
 }

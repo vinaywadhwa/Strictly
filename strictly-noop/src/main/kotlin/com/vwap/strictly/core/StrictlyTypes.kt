@@ -3,11 +3,10 @@ package com.vwap.strictly.core
 /**
  * Minimal copies of the public Strictly types, just enough that callers'
  * type references compile in release builds. None of the data classes here
- * are ever instantiated — the no-op [com.vwap.strictly.Strictly.violations]
- * flow only ever emits an empty map.
+ * are ever instantiated. The no-op flows only ever emit empty values.
  *
- * The class layout intentionally matches the live module exactly so that any
- * code path that defensively references these types (eg a debug-menu list
+ * The class layout intentionally matches the live module exactly so any
+ * code path that defensively references these types (eg: a debug-menu list
  * that's compiled into both flavours) does the right thing.
  */
 
@@ -18,6 +17,7 @@ data class Violation(
     val message: String = "",
     val stackTrace: List<StackFrame> = emptyList(),
     val firstAppFrame: StackFrame? = null,
+    val firstActionableFrame: StackFrame? = null,
     val firstOccurrenceAtMillis: Long = 0,
     val lastOccurrenceAtMillis: Long = 0,
     val occurrenceCount: Int = 0,
@@ -58,14 +58,43 @@ data class StackFrame(
     val lineNumber: Int = 0,
 )
 
+data class Session(
+    val id: String = "",
+    val startedAtMillis: Long = 0,
+    val lastEventAtMillis: Long = 0,
+    val appVersionName: String = "",
+    val appVersionCode: Int = 0,
+    val deviceModel: String = "",
+    val osLevel: Int = 0,
+    val violations: Map<String, Violation> = emptyMap(),
+) {
+    val uniqueCount: Int get() = 0
+    val totalEvents: Int get() = 0
+    val topType: ViolationType? get() = null
+}
+
+data class SessionSummary(
+    val id: String = "",
+    val startedAtMillis: Long = 0,
+    val lastEventAtMillis: Long = 0,
+    val uniqueCount: Int = 0,
+    val totalEvents: Int = 0,
+    val topType: ViolationType? = null,
+    val appVersionName: String = "",
+)
+
 data class StrictlyConfig(
-    val enabled: Boolean = false, // false in no-op to make the intent clearer
+    val enabled: Boolean = false,
     val appPackages: List<String> = emptyList(),
     val ignoredPackages: List<String> = emptyList(),
+    val platformPackages: List<String> = emptyList(),
     val detectedTypes: Set<ViolationType> = emptySet(),
     val maxStoredViolations: Int = 0,
     val liveNotificationUpdates: Boolean = false,
     val notificationUpdateDebounceMillis: Long = 0,
     val registerAppShortcut: Boolean = false,
-    val baselineModeEnabled: Boolean = false,
+    val maxStoredSessions: Int = 0,
+    val httpDebugPort: Int = 0,
+    val httpDebugAutoStart: Boolean = false,
+    val httpDebugSecret: String? = null,
 )

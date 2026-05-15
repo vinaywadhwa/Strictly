@@ -3,14 +3,17 @@ package com.vwap.strictly.internal
 import android.app.Application
 import android.content.Context
 import com.vwap.strictly.core.StrictlyConfig
+import com.vwap.strictly.http.HttpServerController
 import com.vwap.strictly.install.StrictModeInstaller
 import com.vwap.strictly.notification.LiveNotificationController
+import com.vwap.strictly.prefs.StrictlyPrefs
 import com.vwap.strictly.shortcut.ShortcutInstaller
-import com.vwap.strictly.store.ViolationStore
+import com.vwap.strictly.store.SessionStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.asCoroutineDispatcher
+import java.util.concurrent.Executor
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -24,9 +27,13 @@ internal object StrictlyRuntime {
 
     private val installed = AtomicBoolean(false)
 
-    @Volatile private var store: ViolationStore? = null
+    @Volatile private var store: SessionStore? = null
     @Volatile private var notification: LiveNotificationController? = null
     @Volatile private var shortcut: ShortcutInstaller? = null
+    @Volatile private var application: android.app.Application? = null
+    @Volatile private var effectiveConfig: StrictlyConfig? = null
+    @Volatile private var prefs: StrictlyPrefs? = null
+    @Volatile private var http: HttpServerController? = null
 
     /**
      * Single-thread executor for the StrictMode penaltyListener callbacks.
@@ -40,22 +47,55 @@ internal object StrictlyRuntime {
      *
      * Named thread for easier debugging in `adb shell ps -T`.
      */
-    private val listenerExecutor = Executors.newSingleThreadExecutor { r ->
+    private val rawListenerExecutor = Executors.newSingleThreadExecutor { r ->
         Thread(r, "Strictly-Listener").apply { isDaemon = true }
     }
 
+    /**
+     * ThreadLocal that carries the offending thread's name from the StrictMode
+     * policy callback (running on the offending thread, eg "main" or
+     * "FinalizerDaemon") into [StrictModeInstaller.handleRawViolation] (running
+     * on `Strictly-Listener`). Without this, every violation records its
+     * thread as "Strictly-Listener" which is useless dead pixels in the UI.
+     */
+    internal val offendingThreadName = ThreadLocal<String>()
+
+    /**
+     * Wrapping executor that captures the calling thread's name on submission
+     * (still on the offending thread), then delegates to [rawListenerExecutor]
+     * with a runnable that sets [offendingThreadName] before invoking the
+     * original task. Cleared afterwards so we never leak between tasks.
+     */
+    private val listenerExecutor: Executor = Executor { task ->
+        val capturedThreadName = Thread.currentThread().name
+        rawListenerExecutor.execute {
+            offendingThreadName.set(capturedThreadName)
+            try {
+                task.run()
+            } finally {
+                offendingThreadName.remove()
+            }
+        }
+    }
+
     private val coroutineScope = CoroutineScope(
-        SupervisorJob() + listenerExecutor.asCoroutineDispatcher(),
+        SupervisorJob() + rawListenerExecutor.asCoroutineDispatcher(),
     )
 
     fun install(application: Application, config: StrictlyConfig) {
         // Allow re-install (eg manual override of auto-init). Tear down the old
         // notification so we don't end up with two notifications fighting over
-        // the same ID.
+        // the same ID, and the old HTTP server so a fresh bind on the new
+        // controller doesn't trip over the previous controller's still-bound
+        // socket.
         notification?.dismiss()
+        http?.shutdown()
 
+        this.application = application
         val effectiveConfig = config.withInferredAppPackages(application)
-        val store = ViolationStore(maxSize = effectiveConfig.maxStoredViolations)
+        this.effectiveConfig = effectiveConfig
+        this.prefs = StrictlyPrefs(application)
+        val store = SessionStore(application, maxStoredSessions = effectiveConfig.maxStoredSessions)
         this.store = store
 
         val notification = LiveNotificationController(
@@ -83,11 +123,38 @@ internal object StrictlyRuntime {
         )
         installer.install()
 
+        val versionName = runCatching {
+            @Suppress("DEPRECATION")
+            application.packageManager.getPackageInfo(application.packageName, 0)?.versionName
+        }.getOrNull().orEmpty()
+        val http = HttpServerController(
+            config = effectiveConfig,
+            store = store,
+            prefs = requirePrefs(),
+            versionName = "strictly/$BUILD_VERSION app/$versionName",
+        )
+        this.http = http
+        http.reconcile()
+
         installed.set(true)
     }
 
-    fun requireStore(): ViolationStore =
+    /** Library version baked at compile time. Surfaced in /v1/health. */
+    private const val BUILD_VERSION: String = "0.1.0"
+
+    fun requireStore(): SessionStore =
         store ?: error("Strictly not yet installed. Are you in a release build using the no-op artifact?")
+
+    fun requireApplication(): android.app.Application =
+        application ?: error("Strictly not yet installed.")
+
+    fun currentConfig(): StrictlyConfig? = effectiveConfig
+
+    fun requirePrefs(): StrictlyPrefs =
+        prefs ?: error("Strictly not yet installed.")
+
+    fun requireHttp(): HttpServerController =
+        http ?: error("Strictly not yet installed.")
 
     /**
      * If [StrictlyConfig.appPackages] is empty, infer it from the

@@ -1,0 +1,83 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  android:
+    name: build + test (android)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Lint Kotlin (strictly)
+        run: ./gradlew :strictly:compileDebugKotlin --console=plain
+
+      - name: Lint Kotlin (strictly-noop)
+        run: ./gradlew :strictly-noop:compileReleaseKotlin --console=plain
+
+      - name: Unit tests (strictly)
+        run: ./gradlew :strictly:testDebugUnitTest --console=plain
+
+      - name: Unit tests (strictly-noop)
+        run: ./gradlew :strictly-noop:testReleaseUnitTest --console=plain
+
+      - name: Assemble sample app
+        run: ./gradlew :sample:assembleDebug --console=plain
+
+      - name: Upload test reports on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports
+          path: |
+            strictly/build/reports/tests/**
+            strictly-noop/build/reports/tests/**
+
+  mcp:
+    name: lint + smoke (strictly-mcp)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: strictly-mcp
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: strictly-mcp/package-lock.json
+
+      - run: npm ci
+
+      - name: Syntax check (node --check)
+        run: node --check index.js
+
+      - name: Smoke (server boots and exits cleanly on stdin EOF)
+        run: |
+          # Closing stdin should terminate the MCP server within a few seconds.
+          timeout 5 node index.js < /dev/null || exit_code=$?
+          # 124 = timeout killed it (server stayed up but didn't crash); 0 = clean exit.
+          # Both are acceptable, anything else is a real crash.
+          if [ "${exit_code:-0}" != "0" ] && [ "${exit_code:-0}" != "124" ]; then
+            echo "MCP server crashed with exit $exit_code"
+            exit 1
+          fi

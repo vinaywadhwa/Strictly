@@ -13,7 +13,19 @@ data class Violation(
     val type: ViolationType,
     val message: String,
     val stackTrace: List<StackFrame>,
+    /**
+     * The first frame whose class starts with one of the configured
+     * [StrictlyConfig.appPackages] prefixes, or null if no app frame is on the
+     * stack. Use this when you specifically need "user code only" (eg: jump-to-source).
+     */
     val firstAppFrame: StackFrame?,
+    /**
+     * The best frame to *show* the developer. Prefers [firstAppFrame]; falls back
+     * to the first non-platform frame on the stack so that violations originating
+     * entirely inside third-party SDKs (eg: Firebase ContentProvider auto-init)
+     * still surface a useful origin instead of "unknown".
+     */
+    val firstActionableFrame: StackFrame?,
     val firstOccurrenceAtMillis: Long,
     val lastOccurrenceAtMillis: Long,
     val occurrenceCount: Int,
@@ -21,7 +33,10 @@ data class Violation(
     val processName: String,
 ) {
     val title: String get() = type.displayName
-    val subtitle: String get() = firstAppFrame?.formatShort() ?: "unknown origin"
+    val subtitle: String get() = firstActionableFrame?.formatShort() ?: "unknown origin"
+
+    /** True when the surfaced origin is third-party (not in `appPackages`). */
+    val isThirdPartyOrigin: Boolean get() = firstAppFrame == null && firstActionableFrame != null
 }
 
 /**

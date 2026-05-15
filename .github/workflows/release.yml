@@ -64,6 +64,10 @@ jobs:
     name: dry-run publish (no uploads)
     runs-on: ubuntu-latest
     needs: test
+    # Explicit: run when test succeeded, regardless of whether the (skipped on
+    # workflow_dispatch) verify job is in the ancestor chain. Without this,
+    # GitHub Actions propagates 'skipped' transitively and dry-publish never runs.
+    if: always() && needs.test.result == 'success'
     steps:
       - uses: actions/checkout@v4
 

@@ -13,7 +13,6 @@ local.properties
 
 # Node MCP server
 strictly-mcp/node_modules/
-strictly-mcp/package-lock.json
 strictly-mcp/.npmrc
 
 # sed -i.bak leftovers

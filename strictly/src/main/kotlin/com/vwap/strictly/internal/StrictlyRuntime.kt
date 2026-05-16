@@ -102,8 +102,10 @@ internal object StrictlyRuntime {
             context = application,
             scope = coroutineScope,
             store = store,
+            prefs = requirePrefs(),
             debounceMillis = effectiveConfig.notificationUpdateDebounceMillis,
             liveUpdates = effectiveConfig.liveNotificationUpdates,
+            askForNotificationPermission = effectiveConfig.askForNotificationPermission,
         )
         this.notification = notification
         notification.start()
@@ -140,7 +142,7 @@ internal object StrictlyRuntime {
     }
 
     /** Library version baked at compile time. Surfaced in /v1/health. */
-    private const val BUILD_VERSION: String = "0.1.0"
+    private const val BUILD_VERSION: String = "0.1.1"
 
     fun requireStore(): SessionStore =
         store ?: error("Strictly not yet installed. Are you in a release build using the no-op artifact?")

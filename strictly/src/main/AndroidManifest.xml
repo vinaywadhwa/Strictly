@@ -25,6 +25,17 @@
             android:name="com.vwap.strictly.notification.ClearAllReceiver"
             android:exported="false" />
 
+        <!-- Transparent permission shim. Launched on the first captured violation
+             under API 33+ when POST_NOTIFICATIONS is not yet granted. Fires the
+             system permission dialog so devs discover Strictly without having
+             to know it exists. -->
+        <activity
+            android:name="com.vwap.strictly.notification.PermissionRequestActivity"
+            android:exported="false"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar"
+            android:taskAffinity=""
+            android:excludeFromRecents="true" />
+
         <!-- Detail UI. Launched from the live notification, from the long-press
              app shortcut on the home screen, or programmatically via
              Strictly.openDetailScreen(context). -->

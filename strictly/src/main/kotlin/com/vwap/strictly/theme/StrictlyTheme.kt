@@ -8,6 +8,16 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 
 /**
+ * User-overrideable theme selection. Defaults to [System] which delegates to
+ * `isSystemInDarkTheme()`. Persisted via [com.vwap.strictly.prefs.StrictlyPrefs].
+ */
+internal enum class ThemeMode(val label: String) {
+    System("System"),
+    Light("Light"),
+    Dark("Dark"),
+}
+
+/**
  * Strictly's brand: a confident indigo on near-black, with amber for repeat
  * offenders and red for critical violations. Distinct from LeakCanary pink
  * and Chucker blue so devs can recognize Strictly at a glance.
@@ -55,9 +65,17 @@ private val DarkScheme = darkColorScheme(
 )
 
 @Composable
-internal fun StrictlyTheme(content: @Composable () -> Unit) {
+internal fun StrictlyTheme(
+    themeMode: ThemeMode = ThemeMode.System,
+    content: @Composable () -> Unit,
+) {
+    val dark = when (themeMode) {
+        ThemeMode.System -> isSystemInDarkTheme()
+        ThemeMode.Light -> false
+        ThemeMode.Dark -> true
+    }
     MaterialTheme(
-        colorScheme = if (isSystemInDarkTheme()) DarkScheme else LightScheme,
+        colorScheme = if (dark) DarkScheme else LightScheme,
         content = content,
     )
 }

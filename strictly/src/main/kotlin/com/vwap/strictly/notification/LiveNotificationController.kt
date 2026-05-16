@@ -13,6 +13,7 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import com.vwap.strictly.R
 import com.vwap.strictly.core.Violation
+import com.vwap.strictly.prefs.StrictlyPrefs
 import com.vwap.strictly.store.SessionStore
 import com.vwap.strictly.ui.StrictlyActivity
 import kotlinx.coroutines.CoroutineScope
@@ -36,18 +37,23 @@ import kotlinx.coroutines.launch
  *
  * Permission handling:
  * - API < 33: no permission required, notify() just works.
- * - API 33+ without POST_NOTIFICATIONS granted: notify() silently no-ops (we
- *   catch the SecurityException). Violations still flow into the store and
- *   the detail screen still works. First time the user opens the detail
- *   screen via the home-screen shortcut, we request the permission.
+ * - API 33+ with POST_NOTIFICATIONS already granted: notify() just works.
+ * - API 33+ without POST_NOTIFICATIONS: on the *first* notify attempt we
+ *   launch [PermissionRequestActivity] to fire the system dialog. The user
+ *   sees the prompt in the context of a real violation (best moment to
+ *   ask). Subsequent attempts respect the "asked" flag so we never pester.
+ *   If denied, violations still flow into the store and the detail screen
+ *   still works via the home-screen shortcut.
  */
 @OptIn(FlowPreview::class)
 internal class LiveNotificationController(
     private val context: Context,
     private val scope: CoroutineScope,
     private val store: SessionStore,
+    private val prefs: StrictlyPrefs,
     private val debounceMillis: Long,
     private val liveUpdates: Boolean,
+    private val askForNotificationPermission: Boolean,
 ) {
 
     private var collectJob: Job? = null
@@ -79,7 +85,10 @@ internal class LiveNotificationController(
     }
 
     private fun safeNotify(violations: List<Violation>) {
-        if (!canPostNotifications()) return
+        if (!canPostNotifications()) {
+            maybeRequestPermission()
+            return
+        }
 
         val topViolation = violations.first()
         val totalUnique = violations.size
@@ -215,6 +224,25 @@ internal class LiveNotificationController(
             context,
             Manifest.permission.POST_NOTIFICATIONS,
         ) == PackageManager.PERMISSION_GRANTED
+    }
+
+    /**
+     * Best-effort launch of the permission shim. Only fires under API 33+ and
+     * only once per install: the shim records the "asked" flag in its own
+     * onCreate, so we will not re-trigger even on process death mid-dialog.
+     *
+     * Launching from an [android.app.Application] context on a background thread
+     * requires the host app to be in foreground (which it is, by definition,
+     * when its main-thread code just tripped StrictMode). If launch is blocked
+     * by background-launch policy, the next foreground violation will retry.
+     */
+    private fun maybeRequestPermission() {
+        if (!askForNotificationPermission) return
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
+        if (prefs.notificationPermissionAsked.value) return
+        runCatching {
+            context.startActivity(PermissionRequestActivity.newIntent(context))
+        }
     }
 
     private fun pendingIntentFlags(): Int {

@@ -113,6 +113,15 @@ data class StrictlyConfig(
      */
     val httpDebugSecret: String? = null,
 
+    /**
+     * Whether Strictly should fire the system POST_NOTIFICATIONS permission
+     * dialog the first time a violation is captured on API 33+. Default true,
+     * so devs who drop the gradle dep into a team repo get the discovery
+     * prompt automatically. Set false if your app handles the prompt elsewhere
+     * (eg an onboarding wizard) or to be polite to shared device labs.
+     */
+    val askForNotificationPermission: Boolean = true,
+
 ) {
     companion object {
         /**

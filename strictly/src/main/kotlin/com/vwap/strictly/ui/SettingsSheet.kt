@@ -3,6 +3,8 @@ package com.vwap.strictly.ui
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -54,6 +56,7 @@ import androidx.compose.ui.unit.sp
 import com.vwap.strictly.Strictly
 import com.vwap.strictly.core.SessionSummary
 import com.vwap.strictly.theme.StrictlyBrand
+import com.vwap.strictly.theme.ThemeMode
 import kotlinx.coroutines.flow.StateFlow
 
 /**
@@ -76,6 +79,8 @@ internal fun SettingsSheet(
     onHttpToggle: (Boolean) -> Unit,
     onHttpRetry: () -> Unit,
     sessionsState: StateFlow<List<SessionSummary>>,
+    themeMode: StateFlow<ThemeMode>,
+    onThemeChange: (ThemeMode) -> Unit,
     onWipeAll: () -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -84,6 +89,7 @@ internal fun SettingsSheet(
     val desired by httpDesired.collectAsState()
     val lastError by httpLastError.collectAsState()
     val sessions by sessionsState.collectAsState()
+    val currentThemeMode by themeMode.collectAsState()
     var wipeDialogVisible by remember { mutableStateOf(false) }
 
     ModalBottomSheet(
@@ -120,6 +126,11 @@ internal fun SettingsSheet(
                 sessionCount = sessions.size,
                 totalEvents = sessions.sumOf { it.totalEvents },
                 onWipe = { wipeDialogVisible = true },
+            )
+
+            ThemeCard(
+                themeMode = currentThemeMode,
+                onThemeChange = onThemeChange,
             )
 
             FooterText()
@@ -209,6 +220,9 @@ private fun HttpServerCard(
                     colors = SwitchDefaults.colors(
                         checkedThumbColor = StrictlyBrand.OnPrimary,
                         checkedTrackColor = StrictlyBrand.Primary,
+                        uncheckedThumbColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        uncheckedTrackColor = MaterialTheme.colorScheme.surfaceVariant,
+                        uncheckedBorderColor = MaterialTheme.colorScheme.outline,
                     ),
                 )
             }
@@ -447,19 +461,94 @@ private fun StorageCard(
 
 @Composable
 private fun FooterText() {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Icon(
-            Icons.Filled.RadioButtonUnchecked,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.size(12.dp),
-        )
-        Spacer(modifier = Modifier.width(6.dp))
+    val context = LocalContext.current
+    Column {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                Icons.Filled.RadioButtonUnchecked,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(12.dp),
+            )
+            Spacer(modifier = Modifier.width(6.dp))
+            Text(
+                text = "Strictly · 0.1.1",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Spacer(modifier = Modifier.height(4.dp))
         Text(
-            text = "Strictly · 0.1.0",
+            text = "Built by @vinaywadhwa",
             style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = StrictlyBrand.Primary,
+            modifier = Modifier.clickable {
+                val intent = Intent(
+                    Intent.ACTION_VIEW,
+                    Uri.parse("https://github.com/vinaywadhwa"),
+                )
+                context.startActivity(intent)
+            },
         )
+    }
+}
+
+@Composable
+private fun ThemeCard(
+    themeMode: ThemeMode,
+    onThemeChange: (ThemeMode) -> Unit,
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .border(
+                width = 1.dp,
+                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
+                shape = RoundedCornerShape(14.dp),
+            ),
+        color = MaterialTheme.colorScheme.surface,
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(
+                text = "Theme",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Spacer(modifier = Modifier.height(10.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                ThemeMode.entries.forEach { mode ->
+                    val selected = mode == themeMode
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(
+                                if (selected) {
+                                    StrictlyBrand.Primary
+                                } else {
+                                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+                                },
+                            )
+                            .clickable { onThemeChange(mode) }
+                            .padding(vertical = 10.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = mode.label,
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = if (selected) {
+                                StrictlyBrand.OnPrimary
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            },
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 

@@ -97,4 +97,5 @@ data class StrictlyConfig(
     val httpDebugPort: Int = 0,
     val httpDebugAutoStart: Boolean = false,
     val httpDebugSecret: String? = null,
+    val askForNotificationPermission: Boolean = false,
 )

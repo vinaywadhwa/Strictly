@@ -1,6 +1,6 @@
 {
   "name": "strictly-mcp",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "MCP server for Strictly (Android StrictMode UI). Proxies the on-device debug HTTP server into MCP tools so AI agents can read live violations.",
   "type": "module",
   "main": "index.js",

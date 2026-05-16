@@ -8,7 +8,6 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -20,6 +19,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 import com.vwap.strictly.Strictly
 import com.vwap.strictly.core.Session
+import com.vwap.strictly.internal.StrictlyRuntime
+import com.vwap.strictly.notification.PermissionRequestActivity
 import com.vwap.strictly.theme.StrictlyTheme
 
 /**
@@ -42,7 +43,8 @@ class StrictlyActivity : ComponentActivity() {
         val openedFromShortcut = intent?.getBooleanExtra(EXTRA_FROM_SHORTCUT, false) ?: false
 
         setContent {
-            StrictlyTheme {
+            val themeMode by StrictlyRuntime.requirePrefs().themeMode.collectAsState()
+            StrictlyTheme(themeMode = themeMode) {
                 StrictlyApp(openedFromShortcut = openedFromShortcut)
             }
         }
@@ -81,24 +83,25 @@ private fun StrictlyApp(openedFromShortcut: Boolean) {
 
     var exportingSessionId by remember { mutableStateOf<String?>(null) }
     var settingsVisible by remember { mutableStateOf(false) }
-    var permissionAsked by remember { mutableStateOf(false) }
     val context = LocalContext.current
-    val permissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission(),
-    ) { /* result reflects on next violation */ }
 
+    // Shortcut-tap discovery: route through the same persistent shim used by
+    // the first-violation auto-ask so we never double-prompt. Respects the
+    // [com.vwap.strictly.core.StrictlyConfig.askForNotificationPermission]
+    // opt-out flag.
     LaunchedEffect(openedFromShortcut) {
-        if (!openedFromShortcut || permissionAsked) return@LaunchedEffect
-        permissionAsked = true
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            val already = ContextCompat.checkSelfPermission(
-                context,
-                Manifest.permission.POST_NOTIFICATIONS,
-            ) == PackageManager.PERMISSION_GRANTED
-            if (!already) {
-                permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-            }
-        }
+        if (!openedFromShortcut) return@LaunchedEffect
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return@LaunchedEffect
+        val granted = ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.POST_NOTIFICATIONS,
+        ) == PackageManager.PERMISSION_GRANTED
+        if (granted) return@LaunchedEffect
+        val prefs = StrictlyRuntime.requirePrefs()
+        if (prefs.notificationPermissionAsked.value) return@LaunchedEffect
+        val config = StrictlyRuntime.currentConfig() ?: return@LaunchedEffect
+        if (!config.askForNotificationPermission) return@LaunchedEffect
+        context.startActivity(PermissionRequestActivity.newIntent(context))
     }
 
     when (val s = screen) {
@@ -166,6 +169,7 @@ private fun StrictlyApp(openedFromShortcut: Boolean) {
     }
 
     if (settingsVisible) {
+        val prefs = StrictlyRuntime.requirePrefs()
         SettingsSheet(
             httpRunning = Strictly.DebugHttp.running,
             httpDesired = Strictly.DebugHttp.desired,
@@ -175,6 +179,8 @@ private fun StrictlyApp(openedFromShortcut: Boolean) {
             onHttpToggle = { Strictly.DebugHttp.setEnabled(it) },
             onHttpRetry = { Strictly.DebugHttp.retry() },
             sessionsState = Strictly.sessions,
+            themeMode = prefs.themeMode,
+            onThemeChange = { prefs.setThemeMode(it) },
             onWipeAll = {
                 Strictly.wipeAllSessions()
                 settingsVisible = false

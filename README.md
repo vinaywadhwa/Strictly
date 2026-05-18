@@ -91,16 +91,25 @@ Strictly ships a companion MCP server, [`strictly-mcp`](strictly-mcp/), that wra
 >
 > "Show me the stack for that untagged socket and propose a fix."
 
-Setup is two commands plus an in-app toggle:
+Setup is one host-side command (set once per machine), plus an in-app copy-paste per app.
+
+**Step 1: register the MCP once.** The HTTP server is always reachable at the fixed host port `8765`, so this single entry works for every Strictly-enabled app you ever build:
 
 ```sh
-adb forward tcp:8765 tcp:8765
 claude mcp add strictly -e STRICTLY_URL=http://127.0.0.1:8765 -- npx -y strictly-mcp
 ```
 
-Then in the app: open Strictly (via the home-screen shortcut or `Strictly.openDetailScreen(context)` in code), tap the gear icon, toggle **Enable** under *Connect to your AI agent*. The settings sheet also has a ready-to-paste `mcp.json` for non-Claude clients.
+For non-Claude MCP clients, the settings sheet ships a ready-to-paste `mcp.json` snippet you can drop into `~/.mcp.json` or your client's config.
 
-The host port is fixed at `8765` so your MCP config never drifts. The on-device port is derived deterministically from your `applicationId`, falling back through a small bind window if taken. The `adb forward` line bridges the two, so the same MCP entry works across every Strictly-enabled app you ever build.
+**Step 2: per app, copy the `adb forward` command from the app.** Open Strictly (home-screen shortcut / `Strictly.openDetailScreen(context)` from code). Tap the gear icon. Expand *Connect to your AI agent*. Toggle **Enable**. The sheet shows the exact command for *this* app:
+
+```sh
+adb forward tcp:8765 tcp:<this-app's-device-port>
+```
+
+Tap the copy icon, paste into your terminal, done. Re-run after device reboots.
+
+**Why the device port varies but the host port doesn't.** The on-device port is derived deterministically from your `applicationId` into the 8700 to 8799 band, with a small bind-window fallback if taken. That means two Strictly-enabled apps on the same device never collide. The host port stays a constant `8765` so your MCP config never drifts: the `adb forward` line bridges whichever app is currently in your foreground to the same desktop endpoint.
 
 The server binds loopback only. Off by default. No data leaves the device.
 

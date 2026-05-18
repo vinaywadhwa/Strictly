@@ -42,15 +42,16 @@ Add to your MCP config (typically `~/.mcp.json` or the client's MCP settings):
 
 ## One-time host setup
 
-The Android library binds `127.0.0.1` on the device, so you need an `adb` bridge from the host to the device:
+The Android library binds `127.0.0.1` on the device, so you need an `adb` bridge from the host to the device. The host port is always `8765` (matches `STRICTLY_URL` above), but the **on-device port differs per app**: Strictly derives it deterministically from `applicationId` so multiple Strictly-enabled apps on the same device never collide.
 
-```sh
-adb forward tcp:8765 tcp:8765
-```
+The simplest path is to copy the exact `adb forward` command from the app itself:
 
-Works the same for USB-attached physical devices plus emulators. Run it once per `adb` daemon session.
+1. Open Strictly in the target app (home-screen shortcut / call `Strictly.openDetailScreen(context)` from a debug menu).
+2. Tap the gear icon, expand *Connect to your AI agent*, toggle **Enable**.
+3. Tap the copy icon on the `adb forward tcp:8765 tcp:<device-port>` snippet.
+4. Paste into your terminal.
 
-In the app, open Strictly via the home-screen shortcut, tap the gear icon. Toggle "Debug HTTP server" on.
+Works the same for USB-attached physical devices plus emulators. Re-run once per `adb` daemon session (eg: after a device reboot or `adb kill-server`).
 
 ## Configuration
 

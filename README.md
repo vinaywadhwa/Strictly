@@ -18,13 +18,25 @@
   <img src="docs/images/v4_notification_hero.png" width="380" alt="Strictly live notification, expanded">
 </p>
 
-## At a glance
+## Why Strictly
 
-- **Two dependency lines, zero code.** Auto-installs via a `ContentProvider`. No `Application` subclass changes. No manifest edits. No `StrictMode.setThreadPolicy` calls.
-- **One persistent notification.** Deduplicates by stack fingerprint, debounced so a 200-violation scroll storm becomes one update.
-- **A Compose UI on top of every violation.** Session list, per-session breakdown, per-violation stack with the first app-frame highlighted.
-- **Cross-session history on disk.** Every app launch is a new session. LRU-bounded. Per-session JSON or Markdown export, ready for PR comments.
-- **Talks to your AI agent.** Optional loopback HTTP server plus the [`strictly-mcp`](strictly-mcp/) npm package surface live violations to Claude Code / Cursor / any MCP-aware client.
+StrictMode is one of Android's most underused tools. The defaults get in the way:
+
+- `penaltyLog` buries violations in Logcat
+- `penaltyDeath` crashes debug builds out of your flow
+- Per-violation toasts spam the screen during scroll storms
+- No way to see what you've tripped this session, let alone across sessions
+
+Strictly fixes the surface, not the policy. Under the hood it's still vanilla StrictMode with a custom `penaltyListener`. The listener feeds a deduplicating store, a debounced live notification, a Compose detail UI, plus an optional loopback HTTP server.
+
+You add two dependency lines. Nothing else. No `Application` subclass changes. No manifest edits. No `StrictMode.setThreadPolicy` calls. Open the app, trip a violation, see it in the notification.
+
+What you get:
+
+- A live, persistent notification. Deduplicates by stack fingerprint, debounces so a 200-violation scroll storm becomes one update.
+- A Compose UI to drill into each violation. The first app-frame is highlighted so you jump straight to the line of code that tripped it.
+- Session history on disk. Each app launch is a fresh session, kept in an LRU bounded by `maxStoredSessions` (default 50). Per-session JSON or Markdown export for PR comments.
+- An optional loopback HTTP server. The companion [`strictly-mcp`](strictly-mcp/) npm package wires it to Claude Code / Cursor / any MCP-aware AI agent.
 
 Pairs naturally with [LeakCanary](https://square.github.io/leakcanary/) for memory leaks plus [Chucker](https://github.com/ChuckerTeam/chucker) for network.
 
@@ -38,48 +50,6 @@ dependencies {
 ```
 
 That is the entire setup. Strictly infers your app packages from `applicationId` and installs a sensible `StrictMode` policy on first launch. Open your app, trip a violation (eg: an unintentional disk read on the main thread), watch the notification appear.
-
-## The 60-second tour
-
-<table>
-  <tr>
-    <td width="50%" valign="top">
-      <img src="docs/images/v4_session_view_dark.png" alt="Per-session view with deduplicated violations, dark theme">
-    </td>
-    <td valign="top">
-      <h3>Session view, deduplicated</h3>
-      <p>Every violation collapsed to a single row with an occurrence count badge (eg: <code>×3</code>). Severity-first ordering so the worst offender sits on top. The first app-frame is shown inline, so you can scan the stack location at a glance and tap to drill into the full trace. Pictured in dark mode: Strictly follows your system theme by default. You can pin Light or Dark in settings.</p>
-    </td>
-  </tr>
-  <tr>
-    <td valign="top">
-      <h3>Sessions across process lifetimes</h3>
-      <p>Every app launch starts a new session. The list shows them most-recently-active first, with a <b>Live</b> chip on the current one. Tap any row to drill into the violations that fired during that run. The current session is reactive: violations stream in as they happen. Past sessions persist in an LRU bounded by <code>maxStoredSessions</code> (default 50).</p>
-    </td>
-    <td width="50%" valign="top">
-      <img src="docs/images/v4_session_list.png" alt="Sessions list across launches with Live chip on the current one">
-    </td>
-  </tr>
-  <tr>
-    <td width="50%" valign="top">
-      <img src="docs/images/v4_settings_sheet.png" alt="Settings sheet with Theme, Storage, plus Connect to your AI agent">
-    </td>
-    <td valign="top">
-      <h3>Settings, themes, plus AI-agent setup</h3>
-      <p>Three cards. <b>Theme</b>: System / Light / Dark, persisted across launches. The default is also settable in <code>StrictlyConfig</code> so it survives uninstall. <b>Storage</b>: wipe all sessions with one tap, plus a live count of events on disk. <b>Connect to your AI agent</b>: copy-paste-ready <code>adb forward</code>, <code>claude mcp add</code>, plus an <code>mcp.json</code> snippet for any MCP client.</p>
-    </td>
-  </tr>
-  <tr>
-    <td valign="top">
-      <h3>Per-violation detail</h3>
-      <p>Plain-English violation type at the top. Metadata card with occurrence count, first / last seen, the thread that tripped it, plus a stable fingerprint useful for correlating with bug reports. The full stack trace below, with the first app-frame highlighted so the line of code that caused the violation is one glance away. Share-icon exports the session as JSON or Markdown.</p>
-    </td>
-    <td width="50%" valign="top">
-      <img src="docs/images/07_shortcut_menu.png" alt="Home-screen long-press shortcut menu showing Strictly">
-      <p align="center"><sub>Long-press your app icon to jump straight to the Strictly UI.</sub></p>
-    </td>
-  </tr>
-</table>
 
 ## Talk to your AI agent
 
@@ -113,39 +83,47 @@ Tap the copy icon, paste into your terminal, done. Re-run after device reboots.
 
 The server binds loopback only. Off by default. No data leaves the device.
 
-## Why does Strictly exist?
+## The 60-second tour
 
-StrictMode is one of Android's most underused tools because its default output is awkward:
-
-- `penaltyLog` floods Logcat where violations are easy to miss.
-- `penaltyDeath` crashes debug builds out of the dev's flow.
-- Per-violation toasts spam the screen during scroll storms.
-- No way to see "everything I have tripped this session," let alone across sessions.
-
-Strictly fixes the surface, not the policy. Under the hood it is still vanilla `StrictMode` with a custom `penaltyListener`. The listener routes into a de-duplicating store, a debounced notification, a Compose UI, plus an optional loopback HTTP server. Same policy, dramatically better feedback loop.
-
-## How it compares
-
-| | LeakCanary | Chucker | **Strictly** |
-|---|---|---|---|
-| Detects | Memory leaks | Network calls | Main-thread violations plus VM violations |
-| Surface | Notification + detail screen | Notification + detail screen | Notification + detail screen |
-| Auto-init | yes | yes | yes |
-| Home-screen shortcut | yes | yes | yes |
-| No-op release artifact | yes | yes | yes |
-| Cross-session history | no | no | yes (LRU on disk) |
-| Per-session export (JSON / Markdown) | no | no | yes |
-| MCP server for AI agents | no | no | yes (`strictly-mcp` on npm) |
-
-## Production safety
-
-Release builds wire the no-op artifact. Zero classes loaded. Zero `ContentProvider` registered. Zero notification channels created. Nothing about Strictly ships to users. The no-op API mirrors the real API exactly, so calls like `Strictly.openDetailScreen(context)` or `Strictly.violations` compile and silently no-op in release.
-
-## Requirements
-
-- **minSdk 21** to compile. Strictly itself is debug-only.
-- **API 28+** for the live notification plus detail UI. On API 21 through 27, Strictly installs a sensible Logcat-only policy. The UI surfaces are no-ops.
-- **API 33+** prompts for `POST_NOTIFICATIONS` the first time you open the detail screen via the home-screen shortcut.
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="docs/images/v4_session_view_light.png" alt="Per-session view with deduplicated violations">
+    </td>
+    <td valign="top">
+      <h3>Session view, deduplicated</h3>
+      <p>Every violation collapsed to a single row with an occurrence count badge (eg: <code>×3</code>). Severity-first ordering so the worst offender sits on top. The first app-frame is shown inline, so you can scan the stack location at a glance and tap to drill into the full trace. Strictly follows your system theme by default. You can pin Light or Dark in settings.</p>
+    </td>
+  </tr>
+  <tr>
+    <td valign="top">
+      <h3>Sessions across process lifetimes</h3>
+      <p>Every app launch starts a new session. The list shows them most-recently-active first, with a <b>Live</b> chip on the current one. Tap any row to drill into the violations that fired during that run. The current session is reactive: violations stream in as they happen. Past sessions persist in an LRU bounded by <code>maxStoredSessions</code> (default 50).</p>
+    </td>
+    <td width="50%" valign="top">
+      <img src="docs/images/v4_session_list.png" alt="Sessions list across launches with Live chip on the current one">
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="docs/images/v4_settings_sheet.png" alt="Settings sheet with Theme, Storage, plus Connect to your AI agent">
+    </td>
+    <td valign="top">
+      <h3>Settings, themes, plus AI-agent setup</h3>
+      <p>Three cards. <b>Theme</b>: System / Light / Dark, persisted across launches. The default is also settable in <code>StrictlyConfig</code> so it survives uninstall. <b>Storage</b>: wipe all sessions with one tap, plus a live count of events on disk. <b>Connect to your AI agent</b>: copy-paste-ready <code>adb forward</code>, <code>claude mcp add</code>, plus an <code>mcp.json</code> snippet for any MCP client.</p>
+    </td>
+  </tr>
+  <tr>
+    <td valign="top">
+      <h3>Per-violation detail</h3>
+      <p>Plain-English violation type at the top. Metadata card with occurrence count, first / last seen, the thread that tripped it, plus a stable fingerprint useful for correlating with bug reports. The full stack trace below, with the first app-frame highlighted so the line of code that caused the violation is one glance away. Share-icon exports the session as JSON or Markdown.</p>
+    </td>
+    <td width="50%" valign="top">
+      <img src="docs/images/07_shortcut_menu.png" alt="Home-screen long-press shortcut menu showing Strictly">
+      <p align="center"><sub>Long-press your app icon to jump straight to the Strictly UI.</sub></p>
+    </td>
+  </tr>
+</table>
 
 <details>
 <summary><b>Configuration</b></summary>
@@ -260,6 +238,29 @@ To install Strictly manually (eg: if you need to set your own config *before* th
 Then call `Strictly.install(this, yourConfig)` from your `Application.onCreate`.
 
 </details>
+
+## How it compares
+
+| | LeakCanary | Chucker | **Strictly** |
+|---|---|---|---|
+| Detects | Memory leaks | Network calls | Main-thread violations plus VM violations |
+| Surface | Notification + detail screen | Notification + detail screen | Notification + detail screen |
+| Auto-init | yes | yes | yes |
+| Home-screen shortcut | yes | yes | yes |
+| No-op release artifact | yes | yes | yes |
+| Cross-session history | no | no | yes (LRU on disk) |
+| Per-session export (JSON / Markdown) | no | no | yes |
+| MCP server for AI agents | no | no | yes (`strictly-mcp` on npm) |
+
+## Production safety
+
+Release builds wire the no-op artifact. Zero classes loaded. Zero `ContentProvider` registered. Zero notification channels created. Nothing about Strictly ships to users. The no-op API mirrors the real API exactly, so calls like `Strictly.openDetailScreen(context)` or `Strictly.violations` compile and silently no-op in release.
+
+## Requirements
+
+- **minSdk 21** to compile. Strictly itself is debug-only.
+- **API 28+** for the live notification plus detail UI. On API 21 through 27, Strictly installs a sensible Logcat-only policy. The UI surfaces are no-ops.
+- **API 33+** prompts for `POST_NOTIFICATIONS` the first time you open the detail screen via the home-screen shortcut.
 
 ## Roadmap
 

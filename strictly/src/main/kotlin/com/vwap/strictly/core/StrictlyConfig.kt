@@ -1,6 +1,7 @@
 package com.vwap.strictly.core
 
 import androidx.annotation.IntRange
+import com.vwap.strictly.theme.ThemeMode
 
 /**
  * Runtime configuration for Strictly. Override via [com.vwap.strictly.Strictly.install]
@@ -91,12 +92,29 @@ data class StrictlyConfig(
     val maxStoredSessions: Int = 20,
 
     /**
-     * Default port for the debug HTTP server. Server is not started unless the
-     * developer explicitly opts in via the in-app settings sheet or via
-     * [httpDebugAutoStart]. Always bound to 127.0.0.1.
+     * Device-side port for the debug HTTP server. Null (the default) means
+     * "derive deterministically from `Application.packageName`" inside the
+     * 8700-8799 band, so:
+     * - The same app lands on the same port across reinstalls (your MCP
+     *   wiring keeps working without re-registration).
+     * - Different Strictly-instrumented apps on one device statistically
+     *   land on different ports without collisions.
+     *
+     * The desktop side of the bridge (the port `STRICTLY_URL` in your MCP
+     * config points at) is always [DESKTOP_HOST_PORT] = 8765 regardless. The
+     * dev's `adb forward tcp:8765 tcp:<devicePort>` command in the Settings
+     * sheet ties the two together.
+     *
+     * Set an explicit Int (eg 8765) to pin the device port — useful if you're
+     * carrying an existing MCP config keyed to a specific port, or you want
+     * matching desktop/device numbers for simpler manual `adb forward` typing.
+     *
+     * Always bound to 127.0.0.1. Server is not started unless the developer
+     * explicitly opts in via the in-app settings sheet or via
+     * [httpDebugAutoStart].
      */
     @IntRange(from = 1024, to = 65535)
-    val httpDebugPort: Int = 8765,
+    val httpDebugPort: Int? = null,
 
     /**
      * If true, start the debug HTTP server automatically on [Strictly.install].
@@ -122,8 +140,35 @@ data class StrictlyConfig(
      */
     val askForNotificationPermission: Boolean = true,
 
+    /**
+     * Default theme for Strictly's own UI when the user has not made an explicit
+     * pick from the in-app settings sheet. Defaults to [ThemeMode.System], which
+     * mirrors the device's dark/light setting.
+     *
+     * App data is wiped on uninstall, so a user's runtime pick (stored in
+     * SharedPreferences) does not survive reinstalls. Devs who reinstall their
+     * builds 100s of times can hard-code their preference here:
+     *
+     * ```
+     * Strictly.install(this, StrictlyConfig(themeMode = ThemeMode.Dark))
+     * ```
+     *
+     * The in-app toggle remains usable as a per-install override of this default.
+     */
+    val themeMode: ThemeMode = ThemeMode.System,
+
 ) {
     companion object {
+        /**
+         * Desktop-side port the MCP wrapper talks to. Always 8765. Hard-coded
+         * on purpose: every `mcp.json` / `claude mcp add` snippet ships with
+         * `STRICTLY_URL=http://127.0.0.1:8765`, never changes per-app, so the
+         * dev sets MCP config once and it works for every Strictly-enabled
+         * app they ever build. `adb forward` is what bridges this constant to
+         * whatever device port the library happened to bind.
+         */
+        const val DESKTOP_HOST_PORT: Int = 8765
+
         /**
          * SDKs commonly seen in Android apps that fire StrictMode violations on
          * init or in normal operation, and that the consumer app can't fix.

@@ -108,7 +108,6 @@ private fun StrictlyApp(openedFromShortcut: Boolean) {
         Screen.SessionList -> {
             SessionListScreen(
                 sessions = sessions,
-                liveSessionId = liveSessionId,
                 onSessionClick = { summary -> screen = Screen.SessionView(summary.id) },
                 onSettingsClick = { settingsVisible = true },
             )
@@ -174,7 +173,7 @@ private fun StrictlyApp(openedFromShortcut: Boolean) {
             httpRunning = Strictly.DebugHttp.running,
             httpDesired = Strictly.DebugHttp.desired,
             httpLastError = Strictly.DebugHttp.lastError,
-            httpPort = Strictly.DebugHttp.port,
+            httpPortState = Strictly.DebugHttp.port,
             httpHasSecret = Strictly.DebugHttp.hasSecret,
             onHttpToggle = { Strictly.DebugHttp.setEnabled(it) },
             onHttpRetry = { Strictly.DebugHttp.retry() },

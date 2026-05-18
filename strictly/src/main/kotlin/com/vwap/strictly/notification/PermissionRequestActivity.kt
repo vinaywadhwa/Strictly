@@ -28,7 +28,14 @@ internal class PermissionRequestActivity : ComponentActivity() {
 
     private val launcher = registerForActivityResult(
         ActivityResultContracts.RequestPermission(),
-    ) { _ -> finish() }
+    ) { _ ->
+        // Tell the controller to (re)post the notification using the current
+        // store state. The triggering violation already fired before this
+        // dialog appeared, so without this the user would wait for the next
+        // violation to see any notification surface at all.
+        StrictlyRuntime.onNotificationPermissionResolved()
+        finish()
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)

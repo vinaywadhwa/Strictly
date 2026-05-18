@@ -34,6 +34,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -46,14 +47,14 @@ import java.util.Locale
 
 /**
  * Landing screen. Lists every recorded Strictly session, most-recently-active
- * at the top. The live session (if it has at least one violation) appears at
- * the top with a small "Live" pill so the developer instantly sees what's
- * being captured right now.
+ * at the top. Each row identifies its session by start timestamp; the
+ * current-process session has no special badge because recency-sort already
+ * conveys "this is the newest one" and a "Live" badge that lingers across
+ * days of the same process is misleading more often than it is useful.
  */
 @Composable
 internal fun SessionListScreen(
     sessions: List<SessionSummary>,
-    liveSessionId: String,
     onSessionClick: (SessionSummary) -> Unit,
     onSettingsClick: () -> Unit,
 ) {
@@ -78,7 +79,6 @@ internal fun SessionListScreen(
                 items(sessions, key = { it.id }) { s ->
                     SessionCard(
                         summary = s,
-                        isLive = s.id == liveSessionId,
                         onClick = { onSessionClick(s) },
                     )
                 }
@@ -93,6 +93,7 @@ private fun SessionListHeader(
     sessionCount: Int,
     onSettingsClick: () -> Unit,
 ) {
+    val context = LocalContext.current
     Surface(color = MaterialTheme.colorScheme.surface, tonalElevation = 0.dp) {
         Column(modifier = Modifier.fillMaxWidth()) {
             Row(
@@ -112,7 +113,7 @@ private fun SessionListHeader(
                         color = MaterialTheme.colorScheme.onSurface,
                     )
                     Text(
-                        text = headerSubtitle(sessionCount),
+                        text = headerSubtitle(sessionCount, hostAppLabel(context)),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -130,11 +131,16 @@ private fun SessionListHeader(
     }
 }
 
-private fun headerSubtitle(count: Int): String = when (count) {
-    0 -> "No sessions yet. Run the app to record one."
-    1 -> "1 session"
-    else -> "$count sessions"
+private fun headerSubtitle(count: Int, appLabel: String): String = when (count) {
+    0 -> "$appLabel · no sessions yet"
+    1 -> "$appLabel · 1 session"
+    else -> "$appLabel · $count sessions"
 }
+
+private fun hostAppLabel(context: android.content.Context): String =
+    runCatching {
+        context.applicationInfo.loadLabel(context.packageManager).toString()
+    }.getOrNull()?.takeIf { it.isNotBlank() } ?: context.packageName
 
 @Composable
 private fun BrandSquare() {
@@ -157,7 +163,6 @@ private fun BrandSquare() {
 @Composable
 private fun SessionCard(
     summary: SessionSummary,
-    isLive: Boolean,
     onClick: () -> Unit,
 ) {
     Surface(
@@ -181,18 +186,12 @@ private fun SessionCard(
             SessionInitial(summary)
             Spacer(modifier = Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = formatSessionTitle(summary),
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onSurface,
-                    )
-                    if (isLive) {
-                        Spacer(modifier = Modifier.width(8.dp))
-                        LivePill()
-                    }
-                }
+                Text(
+                    text = formatSessionTitle(summary),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
                 Text(
                     text = formatSubLine(summary),
                     style = MaterialTheme.typography.bodySmall,
@@ -245,23 +244,6 @@ private fun SessionInitial(summary: SessionSummary) {
             style = MaterialTheme.typography.titleSmall,
             fontWeight = FontWeight.SemiBold,
             color = tone,
-        )
-    }
-}
-
-@Composable
-private fun LivePill() {
-    Box(
-        modifier = Modifier
-            .clip(CircleShape)
-            .background(StrictlyBrand.Primary)
-            .padding(horizontal = 8.dp, vertical = 2.dp),
-    ) {
-        Text(
-            text = "Live",
-            fontSize = 10.sp,
-            fontWeight = FontWeight.SemiBold,
-            color = StrictlyBrand.OnPrimary,
         )
     }
 }

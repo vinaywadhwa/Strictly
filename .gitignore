@@ -10,6 +10,7 @@
 local.properties
 **/build/
 **/.cxx/
+.kotlin/
 
 # Node MCP server
 strictly-mcp/node_modules/

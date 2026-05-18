@@ -15,11 +15,19 @@ import kotlinx.coroutines.flow.asStateFlow
  * either:
  * - The user has opted in via [StrictlyPrefs.httpEnabled], or
  * - The build sets [StrictlyConfig.httpDebugAutoStart] = true (for CI).
+ *
+ * Port selection is deterministic per [packageName]: by default we hash the
+ * package name into the 8700-8799 band so the same app always lands on the
+ * same device port across reinstalls. On bind collision (two apps that hash
+ * to the same slot, or some other process holding it) we walk
+ * `anchor`, `anchor+1`, `anchor+2`, `anchor+3` and persist the winner so
+ * subsequent launches don't drift unless they have to.
  */
 internal class HttpServerController(
     private val config: StrictlyConfig,
     private val store: SessionStore,
     private val prefs: StrictlyPrefs,
+    private val packageName: String,
     private val versionName: String,
 ) {
     private val _running = MutableStateFlow(false)
@@ -33,11 +41,21 @@ internal class HttpServerController(
      * it actually started. The settings sheet binds its switch to this so the
      * toggle reflects "I asked for this on" even when a bind failure left the
      * server down. The subtitle then shows the gap between desired and
-     * [running] (eg: "Port 8765 is busy").
+     * [running] (eg: "Port 8723 is busy").
      */
     val desired: StateFlow<Boolean> = prefs.httpEnabled
 
-    val port: Int get() = config.httpDebugPort
+    /** The hash-derived anchor port. Stable per [packageName]. */
+    private val anchorPort: Int = config.httpDebugPort ?: deriveAnchorPort(packageName)
+
+    /**
+     * The port we actually bound on the most recent successful start. Updates
+     * live as the server starts; UI reads this for the displayed `adb forward`
+     * command so what you copy matches what's listening.
+     */
+    private val _port = MutableStateFlow(prefs.lastBoundPort() ?: anchorPort)
+    val port: StateFlow<Int> = _port.asStateFlow()
+
     val hasSecret: Boolean get() = !config.httpDebugSecret.isNullOrEmpty()
 
     @Volatile
@@ -81,20 +99,41 @@ internal class HttpServerController(
 
     private fun ensureStarted() {
         if (server != null) return
-        val s = StrictlyHttpServer(
-            port = config.httpDebugPort,
-            store = store,
-            secret = config.httpDebugSecret,
-            versionName = versionName,
-        )
-        if (s.tryStart()) {
-            server = s
-            _lastError.value = null
-            _running.value = true
-        } else {
-            _lastError.value = "Port ${config.httpDebugPort} is busy. Change Strictly's httpDebugPort or stop the process holding it."
-            _running.value = false
+
+        // Try the persisted port first (if any AND still within the current
+        // anchor's fallback window — if the dev changed httpDebugPort, the old
+        // persisted value is stale and shouldn't pull us off the new anchor).
+        // Then the deterministic anchor, then a small fallback window. Dedup
+        // in case persisted == anchor.
+        val attempts = buildList {
+            val last = prefs.lastBoundPort()
+            if (last != null && last in anchorPort until anchorPort + FALLBACK_WINDOW) {
+                add(last)
+            }
+            for (offset in 0 until FALLBACK_WINDOW) add(anchorPort + offset)
+        }.distinct()
+
+        for (candidate in attempts) {
+            val s = StrictlyHttpServer(
+                port = candidate,
+                store = store,
+                secret = config.httpDebugSecret,
+                versionName = versionName,
+            )
+            if (s.tryStart()) {
+                server = s
+                _port.value = candidate
+                prefs.setLastBoundPort(candidate)
+                _lastError.value = null
+                _running.value = true
+                return
+            }
         }
+
+        // Every candidate was busy. Surface the anchor in the error so the
+        // dev can grep for whatever process is squatting it.
+        _lastError.value = "Port $anchorPort and the next ${FALLBACK_WINDOW - 1} are all busy. Stop the process holding them or set StrictlyConfig.httpDebugPort to a free port."
+        _running.value = false
     }
 
     private fun ensureStopped() {
@@ -108,4 +147,20 @@ internal class HttpServerController(
         // intent (off) so the old failure is no longer relevant.
         _lastError.value = null
     }
+
+    private companion object {
+        /** How many consecutive ports to try after the anchor before giving up. */
+        const val FALLBACK_WINDOW = 4
+    }
 }
+
+/**
+ * Map `packageName` to a deterministic port in `[8700, 8799]`. Uses
+ * `String.hashCode()` which is contractually stable per the JVM spec, so two
+ * machines running this for the same package name always agree on the result.
+ *
+ * Masks the sign bit (`and Int.MAX_VALUE`) instead of `.absoluteValue` so
+ * `Int.MIN_VALUE` doesn't overflow.
+ */
+private fun deriveAnchorPort(packageName: String): Int =
+    8700 + ((packageName.hashCode() and Int.MAX_VALUE) % 100)

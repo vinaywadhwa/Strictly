@@ -19,14 +19,16 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Error
-import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -55,14 +57,15 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.vwap.strictly.Strictly
 import com.vwap.strictly.core.SessionSummary
+import com.vwap.strictly.core.StrictlyConfig
 import com.vwap.strictly.theme.StrictlyBrand
 import com.vwap.strictly.theme.ThemeMode
 import kotlinx.coroutines.flow.StateFlow
 
 /**
  * Single bottom sheet that exposes every Strictly toggle worth flipping at
- * runtime: the HTTP server, the MCP setup helper, and the "wipe all sessions"
- * nuclear option.
+ * runtime: the agent-connect card (HTTP + MCP wiring), theme picker, storage
+ * info, and the "wipe all sessions" nuclear option.
  *
  * Designed for the "I just installed Strictly, what do I do now?" moment.
  * Tap the gear in the top right of the session list, see every meaningful
@@ -74,7 +77,7 @@ internal fun SettingsSheet(
     httpRunning: StateFlow<Boolean>,
     httpDesired: StateFlow<Boolean>,
     httpLastError: StateFlow<String?>,
-    httpPort: Int,
+    httpPortState: StateFlow<Int>,
     httpHasSecret: Boolean,
     onHttpToggle: (Boolean) -> Unit,
     onHttpRetry: () -> Unit,
@@ -88,6 +91,7 @@ internal fun SettingsSheet(
     val running by httpRunning.collectAsState()
     val desired by httpDesired.collectAsState()
     val lastError by httpLastError.collectAsState()
+    val devicePort by httpPortState.collectAsState()
     val sessions by sessionsState.collectAsState()
     val currentThemeMode by themeMode.collectAsState()
     var wipeDialogVisible by remember { mutableStateOf(false) }
@@ -100,26 +104,16 @@ internal fun SettingsSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp)
                 .padding(bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             SectionTitle("Settings")
 
-            HttpServerCard(
-                running = running,
-                desired = desired,
-                port = httpPort,
-                hasSecret = httpHasSecret,
-                lastError = lastError,
-                onToggle = onHttpToggle,
-                onRetry = onHttpRetry,
-            )
-
-            McpSetupCard(
-                running = running,
-                port = httpPort,
-                hasSecret = httpHasSecret,
+            ThemeCard(
+                themeMode = currentThemeMode,
+                onThemeChange = onThemeChange,
             )
 
             StorageCard(
@@ -128,9 +122,14 @@ internal fun SettingsSheet(
                 onWipe = { wipeDialogVisible = true },
             )
 
-            ThemeCard(
-                themeMode = currentThemeMode,
-                onThemeChange = onThemeChange,
+            ConnectAgentCard(
+                running = running,
+                desired = desired,
+                devicePort = devicePort,
+                hasSecret = httpHasSecret,
+                lastError = lastError,
+                onToggle = onHttpToggle,
+                onRetry = onHttpRetry,
             )
 
             FooterText()
@@ -175,16 +174,41 @@ private fun SectionTitle(text: String) {
     )
 }
 
+/**
+ * Single "Connect to your AI agent" card. Merges what used to be two separate
+ * cards (HTTP server toggle + MCP setup instructions) because from the user's
+ * mental model they're the same thing — turning on the server only exists so
+ * the MCP integration can work.
+ *
+ * Collapsible body. Opens automatically the first time the server is on
+ * (so the steps are visible the moment you've enabled it). The header row +
+ * description + toggle stay visible in both states so the resting card is
+ * still self-explanatory.
+ *
+ * Each step shows a numbered disc, a short title, a 1-line "why" prose
+ * explanation, and a copy-able code block. The prose matters: most Android
+ * devs don't deal with HTTP servers running inside an app, don't think of
+ * `adb forward` as a tunneling tool, and have never heard of MCP. Without the
+ * "why" lines the steps read as magic incantations.
+ */
 @Composable
-private fun HttpServerCard(
+private fun ConnectAgentCard(
     running: Boolean,
     desired: Boolean,
-    port: Int,
+    devicePort: Int,
     hasSecret: Boolean,
     lastError: String?,
     onToggle: (Boolean) -> Unit,
     onRetry: () -> Unit,
 ) {
+    val context = LocalContext.current
+    var expanded by remember(running) { mutableStateOf(running) }
+    val hostPort = StrictlyConfig.DESKTOP_HOST_PORT
+    val adbForwardCommand = remember(devicePort) { "adb forward tcp:$hostPort tcp:$devicePort" }
+    val adbRemoveCommand = remember { "adb forward --remove tcp:$hostPort" }
+    val mcpJson = remember(hasSecret) { buildMcpJson(hostPort, hasSecret) }
+    val cliSnippet = remember(hasSecret) { buildCliSnippet(hostPort, hasSecret) }
+
     Surface(
         modifier = Modifier
             .fillMaxWidth()
@@ -197,166 +221,195 @@ private fun HttpServerCard(
         color = MaterialTheme.colorScheme.surface,
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { expanded = !expanded },
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "Debug HTTP server",
+                        text = "Connect to your AI agent",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.onSurface,
                     )
                     Text(
-                        text = serverStatusText(desired, running, port, lastError),
+                        text = "Wire Strictly into Claude Code, Cursor, or any MCP client.",
                         style = MaterialTheme.typography.bodySmall,
-                        color = if (lastError != null) StrictlyBrand.Red else MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                Switch(
-                    // Bind to *desired* (the persisted intent) instead of
-                    // *running* (the actual state). A bind failure must not
-                    // silently flip the toggle back behind the user.
-                    checked = desired,
-                    onCheckedChange = onToggle,
-                    colors = SwitchDefaults.colors(
-                        checkedThumbColor = StrictlyBrand.OnPrimary,
-                        checkedTrackColor = StrictlyBrand.Primary,
-                        uncheckedThumbColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                        uncheckedTrackColor = MaterialTheme.colorScheme.surfaceVariant,
-                        uncheckedBorderColor = MaterialTheme.colorScheme.outline,
-                    ),
+                Icon(
+                    imageVector = if (expanded) Icons.Filled.KeyboardArrowUp else Icons.Filled.KeyboardArrowDown,
+                    contentDescription = if (expanded) "Collapse" else "Expand",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = "Binds to 127.0.0.1 only. Toggle on so the MCP (via ADB port-forward) can read sessions.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            if (running) {
-                Spacer(modifier = Modifier.height(8.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        Icons.Filled.CheckCircle,
-                        contentDescription = null,
-                        tint = StrictlyBrand.Primary,
-                        modifier = Modifier.size(14.dp),
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = "Listening at http://127.0.0.1:$port",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        fontFamily = FontFamily.Monospace,
-                    )
-                }
-                if (hasSecret) {
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = "Auth: X-Strictly-Secret header required.",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontFamily = FontFamily.Monospace,
-                    )
-                }
-            }
-            if (desired && !running && lastError != null) {
-                Spacer(modifier = Modifier.height(10.dp))
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(20.dp))
-                        .clickable(onClick = onRetry)
-                        .background(StrictlyBrand.Primary.copy(alpha = 0.14f))
-                        .padding(horizontal = 14.dp, vertical = 8.dp),
+
+            if (expanded) {
+                Spacer(modifier = Modifier.height(14.dp))
+                Text(
+                    text = "Strictly speaks MCP (Model Context Protocol). Once wired, your AI assistant can answer questions like \"what violations did the app trip on?\" or \"explain frame 9 of the latest stack\" without you leaving your editor.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+
+                Spacer(modifier = Modifier.height(14.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text(
-                        text = "Retry",
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        color = StrictlyBrand.Primary,
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Enable",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                        Text(
+                            text = serverStatusText(desired, running, devicePort, lastError),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = if (lastError != null) StrictlyBrand.Red else MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Switch(
+                        checked = desired,
+                        onCheckedChange = onToggle,
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = StrictlyBrand.OnPrimary,
+                            checkedTrackColor = StrictlyBrand.Primary,
+                            uncheckedThumbColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                            uncheckedTrackColor = MaterialTheme.colorScheme.surfaceVariant,
+                            uncheckedBorderColor = MaterialTheme.colorScheme.outline,
+                        ),
                     )
+                }
+
+                if (desired && !running && lastError != null) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(20.dp))
+                            .clickable(onClick = onRetry)
+                            .background(StrictlyBrand.Primary.copy(alpha = 0.14f))
+                            .padding(horizontal = 14.dp, vertical = 8.dp),
+                    ) {
+                        Text(
+                            text = "Retry",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = StrictlyBrand.Primary,
+                        )
+                    }
+                }
+
+                if (running) {
+                    Spacer(modifier = Modifier.height(18.dp))
+                    StepSection(
+                        number = 1,
+                        title = "Bridge host → device",
+                        explanation = "Tunnels your computer's port $hostPort to this app on the device. Re-run after device reboots.",
+                    )
+                    CodeBlock(
+                        title = "Run on your computer",
+                        code = adbForwardCommand,
+                        onCopy = { copyToClipboard(context, adbForwardCommand, "Strictly ADB forward") },
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    CodeBlock(
+                        title = "Tear down (run before switching to a different app)",
+                        code = adbRemoveCommand,
+                        onCopy = { copyToClipboard(context, adbRemoveCommand, "Strictly ADB forward remove") },
+                    )
+
+                    Spacer(modifier = Modifier.height(14.dp))
+                    StepSection(
+                        number = 2,
+                        title = "Register with your AI client",
+                        explanation = "Set once per machine. Same URL works for every Strictly-enabled app you ever build.",
+                    )
+                    CodeBlock(
+                        title = "Claude Code CLI",
+                        code = cliSnippet,
+                        onCopy = { copyToClipboard(context, cliSnippet, "Strictly MCP CLI snippet") },
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    CodeBlock(
+                        title = "Other clients (Cursor etc) — paste into mcp.json",
+                        code = mcpJson,
+                        onCopy = { copyToClipboard(context, mcpJson, "Strictly MCP JSON config") },
+                    )
+
+                    Spacer(modifier = Modifier.height(14.dp))
+                    StepSection(
+                        number = 3,
+                        title = "Ask your AI a question",
+                        explanation = "Try: \"Strictly: what violations did this app trip on?\" The rest is just conversation.",
+                    )
+
+                    if (hasSecret) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "Auth: X-Strictly-Secret header required for direct curl. The MCP wiring above handles this for you.",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontFamily = FontFamily.Monospace,
+                        )
+                    }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun StepSection(number: Int, title: String, explanation: String) {
+    Column {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier
+                    .size(22.dp)
+                    .clip(CircleShape)
+                    .background(StrictlyBrand.Primary.copy(alpha = 0.14f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = number.toString(),
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = StrictlyBrand.Primary,
+                )
+            }
+            Spacer(modifier = Modifier.width(10.dp))
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+        }
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            text = explanation,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(start = 32.dp),
+        )
+        Spacer(modifier = Modifier.height(8.dp))
     }
 }
 
 private fun serverStatusText(
     desired: Boolean,
     running: Boolean,
-    port: Int,
+    devicePort: Int,
     lastError: String?,
 ): String = when {
     lastError != null -> lastError
-    running -> "Running on port $port"
+    running -> "Running on device port $devicePort"
     desired -> "Starting…"
     else -> "Off (off by default, toggle on when you want it)"
-}
-
-@Composable
-private fun McpSetupCard(
-    running: Boolean,
-    port: Int,
-    hasSecret: Boolean,
-) {
-    val context = LocalContext.current
-    val adbCommand = remember(port) { "adb forward tcp:$port tcp:$port" }
-    val mcpJson = remember(port, hasSecret) { buildMcpJson(port, hasSecret) }
-    val cliSnippet = remember(port, hasSecret) { buildCliSnippet(port, hasSecret) }
-
-    Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
-            .border(
-                width = 1.dp,
-                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
-                shape = RoundedCornerShape(14.dp),
-            ),
-        color = MaterialTheme.colorScheme.surface,
-    ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Text(
-                text = "Connect to your AI agent",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onSurface,
-            )
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = if (running) {
-                    "Pipe live violations into Claude Code / Cursor / any MCP-aware tool. Three small steps:"
-                } else {
-                    "Turn the HTTP server on above first. Then three small steps:"
-                },
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Spacer(modifier = Modifier.height(10.dp))
-            CodeBlock(
-                title = "1. Bridge host → device (USB or emulator)",
-                code = adbCommand,
-                onCopy = { copyToClipboard(context, adbCommand, "Strictly ADB forward") },
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            CodeBlock(
-                title = "2. Register the MCP (Claude Code CLI)",
-                code = cliSnippet,
-                onCopy = { copyToClipboard(context, cliSnippet, "Strictly MCP CLI snippet") },
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            CodeBlock(
-                title = "or 2b. mcp.json (any MCP client)",
-                code = mcpJson,
-                onCopy = { copyToClipboard(context, mcpJson, "Strictly MCP JSON config") },
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = "Works the same on a USB-attached phone or an emulator. Step 1 needs adb on PATH plus USB debugging on. Skip step 1 if you already ran it during this adb session.",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-    }
 }
 
 @Composable
@@ -462,30 +515,18 @@ private fun StorageCard(
 @Composable
 private fun FooterText() {
     val context = LocalContext.current
-    Column {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(
-                Icons.Filled.RadioButtonUnchecked,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(12.dp),
-            )
-            Spacer(modifier = Modifier.width(6.dp))
-            Text(
-                text = "Strictly · 0.1.1",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        Spacer(modifier = Modifier.height(4.dp))
+    Box(
+        modifier = Modifier.fillMaxWidth(),
+        contentAlignment = Alignment.Center,
+    ) {
         Text(
-            text = "Built by @vinaywadhwa",
+            text = "Strictly · 0.1.1",
             style = MaterialTheme.typography.labelSmall,
             color = StrictlyBrand.Primary,
             modifier = Modifier.clickable {
                 val intent = Intent(
                     Intent.ACTION_VIEW,
-                    Uri.parse("https://github.com/vinaywadhwa"),
+                    Uri.parse("https://github.com/vinaywadhwa/Strictly"),
                 )
                 context.startActivity(intent)
             },

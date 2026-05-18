@@ -5,42 +5,64 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.ui.graphics.Color
 
 /**
  * User-overrideable theme selection. Defaults to [System] which delegates to
  * `isSystemInDarkTheme()`. Persisted via [com.vwap.strictly.prefs.StrictlyPrefs].
+ *
+ * Public so devs can hard-code a preference via
+ * [com.vwap.strictly.core.StrictlyConfig.themeMode] — useful because
+ * SharedPreferences are wiped on uninstall, but a config-level default lives
+ * in the app's source and survives every reinstall.
  */
-internal enum class ThemeMode(val label: String) {
+enum class ThemeMode(internal val label: String) {
     System("System"),
     Light("Light"),
     Dark("Dark"),
 }
 
 /**
- * Strictly's brand: a confident indigo on near-black, with amber for repeat
- * offenders and red for critical violations. Distinct from LeakCanary pink
- * and Chucker blue so devs can recognize Strictly at a glance.
+ * Strictly's brand: neutral graphite that adapts to the active theme (near-black
+ * in light mode, near-white in dark mode), with amber for repeat offenders and
+ * red for critical violations. Neutral over vivid by design — Strictly is a dev
+ * tool that lives next to your IDE, not a consumer app fighting for attention.
+ *
+ * [Primary] and [OnPrimary] are Composable getters that read from the active
+ * MaterialTheme, so they adapt automatically without each call site picking a
+ * variant. Severity colors ([Amber], [Red]) are mode-invariant on purpose:
+ * "this is bad" should read the same in light and dark.
  */
 internal object StrictlyBrand {
-    val Primary = Color(0xFF7C3AED)        // indigo-violet
-    val PrimaryDim = Color(0xFF5B21B6)
-    val OnPrimary = Color(0xFFFFFFFF)
+    /** Mode-adaptive: near-black in light mode, near-white in dark mode. */
+    val Primary: Color
+        @Composable @ReadOnlyComposable
+        get() = MaterialTheme.colorScheme.primary
+
+    /** Mode-adaptive contrast color for content rendered on top of [Primary]. */
+    val OnPrimary: Color
+        @Composable @ReadOnlyComposable
+        get() = MaterialTheme.colorScheme.onPrimary
+
+    // Severity tones (intentionally mode-invariant).
+    val Amber = Color(0xFFF59E0B)
+    val Red = Color(0xFFE11D48)
+
+    // Surface tokens consumed by the theme construction below.
     val Surface = Color(0xFFFAFAFA)
     val OnSurface = Color(0xFF111111)
     val SurfaceDark = Color(0xFF0F0F12)
     val OnSurfaceDark = Color(0xFFF5F5F7)
-    val Amber = Color(0xFFF59E0B)
-    val Red = Color(0xFFEF4444)
     val Outline = Color(0xFFE4E4E7)
     val OutlineDark = Color(0xFF27272A)
 }
 
 private val LightScheme = lightColorScheme(
-    primary = StrictlyBrand.Primary,
-    onPrimary = StrictlyBrand.OnPrimary,
-    primaryContainer = Color(0xFFEDE9FE),
-    onPrimaryContainer = Color(0xFF2E1065),
+    primary = Color(0xFF18181B),          // zinc-900
+    onPrimary = Color(0xFFFAFAFA),        // zinc-50
+    primaryContainer = Color(0xFFF4F4F5), // zinc-100
+    onPrimaryContainer = Color(0xFF27272A), // zinc-800
     surface = StrictlyBrand.Surface,
     onSurface = StrictlyBrand.OnSurface,
     surfaceVariant = Color(0xFFF4F4F5),
@@ -51,10 +73,10 @@ private val LightScheme = lightColorScheme(
 )
 
 private val DarkScheme = darkColorScheme(
-    primary = Color(0xFFA78BFA),
-    onPrimary = Color(0xFF1E1B4B),
-    primaryContainer = Color(0xFF4C1D95),
-    onPrimaryContainer = Color(0xFFEDE9FE),
+    primary = Color(0xFFE4E4E7),          // zinc-200
+    onPrimary = Color(0xFF18181B),        // zinc-900
+    primaryContainer = Color(0xFF27272A), // zinc-800
+    onPrimaryContainer = Color(0xFFF4F4F5), // zinc-100
     surface = StrictlyBrand.SurfaceDark,
     onSurface = StrictlyBrand.OnSurfaceDark,
     surfaceVariant = Color(0xFF1F1F23),

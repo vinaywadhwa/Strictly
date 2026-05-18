@@ -128,7 +128,13 @@ object Strictly {
         val lastError: StateFlow<String?>
             get() = StrictlyRuntime.requireHttp().lastError
 
-        val port: Int
+        /**
+         * The device port the server is bound to. Live flow so UI rebinds the
+         * displayed `adb forward` command when a collision pushed us off the
+         * anchor port. Stable across launches (persisted in
+         * [com.vwap.strictly.prefs.StrictlyPrefs.lastBoundPort]).
+         */
+        val port: StateFlow<Int>
             get() = StrictlyRuntime.requireHttp().port
 
         val hasSecret: Boolean

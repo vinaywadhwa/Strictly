@@ -38,21 +38,21 @@
 
         <!-- Detail UI. Launched from the live notification, from the long-press
              app shortcut on the home screen, or programmatically via
-             Strictly.openDetailScreen(context). -->
+             Strictly.openDetailScreen(context). Always via an explicit Intent
+             with ComponentName set, so no intent-filter is required.
+
+             Empty taskAffinity isolates this activity into its own task per
+             host app: a device with two Strictly-enabled apps installed never
+             merges their detail-screen stacks, and tapping a notification
+             never surfaces a chooser dialog. -->
         <activity
             android:name="com.vwap.strictly.ui.StrictlyActivity"
             android:exported="true"
-            android:taskAffinity="com.vwap.strictly.ui"
+            android:taskAffinity=""
             android:label="@string/strictly_app_name"
             android:icon="@drawable/strictly_ic_shortcut"
             android:roundIcon="@drawable/strictly_ic_shortcut"
-            android:theme="@style/Strictly.Theme.Launcher">
-            <!-- Launcher intent so the home-screen shortcut + share targets work. -->
-            <intent-filter>
-                <action android:name="com.vwap.strictly.action.OPEN" />
-                <category android:name="android.intent.category.DEFAULT" />
-            </intent-filter>
-        </activity>
+            android:theme="@style/Strictly.Theme.Launcher" />
 
     </application>
 </manifest>

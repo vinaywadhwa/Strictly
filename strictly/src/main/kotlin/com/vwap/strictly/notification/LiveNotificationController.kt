@@ -227,6 +227,20 @@ internal class LiveNotificationController(
     }
 
     /**
+     * Called from [PermissionRequestActivity] once the user has resolved the
+     * system dialog (grant or deny). If granted, immediately rebuild and post
+     * the notification using the current store state. Without this nudge the
+     * triggering violation — which was already captured before the dialog —
+     * would silently sit in the store until another violation arrived.
+     */
+    fun onPermissionResolved() {
+        val current = store.currentViolations.value.values.toList()
+            .sortedByDescending { v -> v.lastOccurrenceAtMillis }
+        if (current.isEmpty()) return
+        if (canPostNotifications()) safeNotify(current)
+    }
+
+    /**
      * Best-effort launch of the permission shim. Only fires under API 33+ and
      * only once per install: the shim records the "asked" flag in its own
      * onCreate, so we will not re-trigger even on process death mid-dialog.

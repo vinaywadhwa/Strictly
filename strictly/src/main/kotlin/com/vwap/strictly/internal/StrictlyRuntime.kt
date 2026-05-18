@@ -94,7 +94,7 @@ internal object StrictlyRuntime {
         this.application = application
         val effectiveConfig = config.withInferredAppPackages(application)
         this.effectiveConfig = effectiveConfig
-        this.prefs = StrictlyPrefs(application)
+        this.prefs = StrictlyPrefs(application, defaultThemeMode = effectiveConfig.themeMode)
         val store = SessionStore(application, maxStoredSessions = effectiveConfig.maxStoredSessions)
         this.store = store
 
@@ -133,6 +133,7 @@ internal object StrictlyRuntime {
             config = effectiveConfig,
             store = store,
             prefs = requirePrefs(),
+            packageName = application.packageName,
             versionName = "strictly/$BUILD_VERSION app/$versionName",
         )
         this.http = http
@@ -157,6 +158,16 @@ internal object StrictlyRuntime {
 
     fun requireHttp(): HttpServerController =
         http ?: error("Strictly not yet installed.")
+
+    /**
+     * Notify the live-notification controller that the user has resolved the
+     * POST_NOTIFICATIONS permission dialog. Called from
+     * [com.vwap.strictly.notification.PermissionRequestActivity]; harmless if
+     * Strictly has been uninstalled by the time the dialog closes.
+     */
+    fun onNotificationPermissionResolved() {
+        notification?.onPermissionResolved()
+    }
 
     /**
      * If [StrictlyConfig.appPackages] is empty, infer it from the

@@ -1,5 +1,6 @@
 package com.vwap.strictly.http
 
+import android.net.TrafficStats
 import com.vwap.strictly.core.Session
 import com.vwap.strictly.export.SessionExporter
 import com.vwap.strictly.store.SessionJson
@@ -47,6 +48,15 @@ internal class StrictlyHttpServer(
         setServerSocketFactory {
             java.net.ServerSocket().apply { reuseAddress = true }
         }
+        // Tag every socket FD Strictly's NanoHTTPD instance opens so StrictMode's
+        // detectUntaggedSockets() doesn't flag the library that exists to detect
+        // exactly these things. Two thread families to cover:
+        //   1. Per-request handler threads (covered by [TaggedAsyncRunner] below).
+        //   2. The "NanoHttpd Main Listener" accept thread (covered by the
+        //      [createServerRunnable] override below).
+        // The tag value is informational; what StrictMode cares about is that
+        // it's non-zero on the thread at the moment a socket FD is opened.
+        asyncRunner = TaggedAsyncRunner()
     }
 
     /** Start in foreground (blocking) is undesirable; use [tryStart] instead. */
@@ -189,5 +199,71 @@ internal class StrictlyHttpServer(
         r.addHeader("Access-Control-Allow-Origin", "*")
         r.addHeader("Cache-Control", "no-store")
         return r
+    }
+
+    /**
+     * Wraps NanoHTTPD's accept loop so the thread that calls
+     * `serverSocket.accept()` (and therefore creates every per-connection
+     * client socket FD) carries a TrafficStats tag. Without this the library
+     * trips its own `detectUntaggedSockets()` rule on every incoming request.
+     */
+    override fun createServerRunnable(timeout: Int): ServerRunnable = TaggedServerRunnable(timeout)
+
+    private inner class TaggedServerRunnable(timeout: Int) : ServerRunnable(timeout) {
+        override fun run() {
+            TrafficStats.setThreadStatsTag(STRICTLY_SOCKET_TAG)
+            try {
+                super.run()
+            } finally {
+                TrafficStats.clearThreadStatsTag()
+            }
+        }
+    }
+
+    /**
+     * Mirrors NanoHTTPD's `DefaultAsyncRunner` (per-request daemon thread, no
+     * pooling) but tags each worker thread before invoking the handler. The
+     * tag must be set on the same thread that performs the socket read/write,
+     * so we wrap the handler's `run()` rather than the surrounding lifecycle.
+     */
+    private class TaggedAsyncRunner : AsyncRunner {
+        private var requestCount = 0L
+        private val running = mutableListOf<ClientHandler>()
+
+        @Synchronized
+        override fun closeAll() {
+            for (h in running.toList()) h.close()
+        }
+
+        @Synchronized
+        override fun closed(handler: ClientHandler) {
+            running.remove(handler)
+        }
+
+        @Synchronized
+        override fun exec(handler: ClientHandler) {
+            running.add(handler)
+            val t = Thread {
+                TrafficStats.setThreadStatsTag(STRICTLY_SOCKET_TAG)
+                try {
+                    handler.run()
+                } finally {
+                    TrafficStats.clearThreadStatsTag()
+                }
+            }
+            t.isDaemon = true
+            t.name = "Strictly HTTP Request Processor (#${requestCount++})"
+            t.start()
+        }
+    }
+
+    private companion object {
+        /**
+         * Arbitrary non-zero tag identifying Strictly's own server sockets in
+         * traffic stats. StrictMode only checks that the tag is non-zero at the
+         * moment a socket FD is opened; the value is otherwise informational.
+         * `0x57_41_50_53` reads as ASCII 'WAPS' (vwap + Strictly).
+         */
+        const val STRICTLY_SOCKET_TAG = 0x57415053
     }
 }

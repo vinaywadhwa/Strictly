@@ -18,7 +18,10 @@ import kotlinx.coroutines.flow.asStateFlow
  * wrapped in StrictMode.allowThreadDiskReads anyway to avoid contaminating
  * the consumer app's policy.
  */
-internal class StrictlyPrefs(context: Context) {
+internal class StrictlyPrefs(
+    context: Context,
+    private val defaultThemeMode: ThemeMode = ThemeMode.System,
+) {
 
     private val prefs: SharedPreferences = withRelaxedStrictMode {
         context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -54,9 +57,24 @@ internal class StrictlyPrefs(context: Context) {
         _themeMode.value = mode
     }
 
+    /**
+     * Last device port the HTTP server successfully bound, if any. Read once
+     * on startup so a previously-bound port is tried first (handles the case
+     * where the anchor port was busy and we fell back to anchor+1: we want
+     * to keep landing on anchor+1 across launches so the dev's previously-
+     * copied `adb forward` command keeps working).
+     */
+    fun lastBoundPort(): Int? = withRelaxedStrictMode {
+        prefs.getInt(KEY_LAST_BOUND_PORT, -1).takeIf { it > 0 }
+    }
+
+    fun setLastBoundPort(port: Int) {
+        withRelaxedStrictMode { prefs.edit().putInt(KEY_LAST_BOUND_PORT, port).apply() }
+    }
+
     private fun loadThemeMode(): ThemeMode {
         val raw = withRelaxedStrictMode { prefs.getString(KEY_THEME_MODE, null) }
-        return ThemeMode.entries.firstOrNull { it.name == raw } ?: ThemeMode.System
+        return ThemeMode.entries.firstOrNull { it.name == raw } ?: defaultThemeMode
     }
 
     private inline fun <T> withRelaxedStrictMode(block: () -> T): T {
@@ -77,5 +95,6 @@ internal class StrictlyPrefs(context: Context) {
         const val KEY_HTTP_ENABLED = "http_enabled"
         const val KEY_NOTIFICATION_PERMISSION_ASKED = "notification_permission_asked"
         const val KEY_THEME_MODE = "theme_mode"
+        const val KEY_LAST_BOUND_PORT = "last_bound_port"
     }
 }

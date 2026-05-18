@@ -138,6 +138,7 @@ private fun SessionViewHeader(
     onExport: () -> Unit,
     onDelete: () -> Unit,
 ) {
+    val context = LocalContext.current
     Surface(color = MaterialTheme.colorScheme.surface, tonalElevation = 0.dp) {
         Column(modifier = Modifier.fillMaxWidth()) {
             Row(
@@ -154,30 +155,12 @@ private fun SessionViewHeader(
                     )
                 }
                 Column(modifier = Modifier.weight(1f)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            text = formatHeaderTitle(session),
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onSurface,
-                        )
-                        if (isLive) {
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Box(
-                                modifier = Modifier
-                                    .clip(CircleShape)
-                                    .background(StrictlyBrand.Primary)
-                                    .padding(horizontal = 8.dp, vertical = 2.dp),
-                            ) {
-                                Text(
-                                    text = "Live",
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = StrictlyBrand.OnPrimary,
-                                )
-                            }
-                        }
-                    }
+                    Text(
+                        text = hostAppLabel(context),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
                     Text(
                         text = formatHeaderSub(session),
                         style = MaterialTheme.typography.bodySmall,
@@ -206,17 +189,20 @@ private fun SessionViewHeader(
 
 private val HEADER_FORMAT = SimpleDateFormat("MMM d, h:mm a", Locale.getDefault())
 
-private fun formatHeaderTitle(s: Session): String =
-    HEADER_FORMAT.format(Date(s.startedAtMillis))
+private fun hostAppLabel(context: android.content.Context): String =
+    runCatching {
+        context.applicationInfo.loadLabel(context.packageManager).toString()
+    }.getOrNull()?.takeIf { it.isNotBlank() } ?: context.packageName
 
 private fun formatHeaderSub(s: Session): String {
     val unique = s.uniqueCount
     val events = s.totalEvents
+    val timePart = HEADER_FORMAT.format(Date(s.startedAtMillis))
     val versionPart = if (s.appVersionName.isNotEmpty()) " · v${s.appVersionName}" else ""
     return when {
-        unique == 0 -> "No violations yet$versionPart"
-        unique == 1 -> "1 unique · $events event${if (events == 1) "" else "s"}$versionPart"
-        else -> "$unique unique · $events events$versionPart"
+        unique == 0 -> "$timePart · no violations yet$versionPart"
+        unique == 1 -> "$timePart · 1 unique · $events event${if (events == 1) "" else "s"}$versionPart"
+        else -> "$timePart · $unique unique · $events events$versionPart"
     }
 }
 

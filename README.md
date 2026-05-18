@@ -15,7 +15,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/images/15_chucker_final_expanded.png" width="380" alt="Strictly live notification, expanded">
+  <img src="docs/images/v4_notification_hero.png" width="380" alt="Strictly live notification, expanded">
 </p>
 
 ## At a glance

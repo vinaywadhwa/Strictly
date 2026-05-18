@@ -44,8 +44,8 @@ dependencies {
     // We dogfood our own published artifact. Debug builds get the real SDK
     // from Maven Central, release builds get the no-op stub. Consumer apps
     // wire it exactly like this in their gradle file.
-    debugImplementation("io.github.vinaywadhwa.strictly:strictly:0.1.0")
-    releaseImplementation("io.github.vinaywadhwa.strictly:strictly-noop:0.1.0")
+    debugImplementation("io.github.vinaywadhwa.strictly:strictly:0.1.1")
+    releaseImplementation("io.github.vinaywadhwa.strictly:strictly-noop:0.1.1")
 
     debugImplementation(libs.androidx.compose.ui.tooling)
 }

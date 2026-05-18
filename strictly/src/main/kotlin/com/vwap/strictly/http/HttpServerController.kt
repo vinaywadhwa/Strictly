@@ -161,6 +161,10 @@ internal class HttpServerController(
  *
  * Masks the sign bit (`and Int.MAX_VALUE`) instead of `.absoluteValue` so
  * `Int.MIN_VALUE` doesn't overflow.
+ *
+ * `internal` so unit tests can pin the mapping properties (deterministic,
+ * always in band, total over the input domain) without going through the
+ * controller's bind machinery.
  */
-private fun deriveAnchorPort(packageName: String): Int =
+internal fun deriveAnchorPort(packageName: String): Int =
     8700 + ((packageName.hashCode() and Int.MAX_VALUE) % 100)

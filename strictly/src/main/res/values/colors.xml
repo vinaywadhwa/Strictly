@@ -1,7 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="strictly_brand_primary">#7C3AED</color>
-    <color name="strictly_brand_on_primary">#FFFFFFFF</color>
+    <!-- Neutral graphite primary, matches the Compose light-mode color scheme
+         (zinc-900). The notification controller passes this to setColor() with
+         setColorized(true) so the live notification card renders in brand
+         neutral. A values-night/colors.xml override flips this to zinc-200 so
+         the colorized card stays legible in dark mode. -->
+    <color name="strictly_brand_primary">#18181B</color>
+    <color name="strictly_brand_on_primary">#FFFAFAFA</color>
     <color name="strictly_brand_amber">#F59E0B</color>
     <color name="strictly_brand_red">#EF4444</color>
     <color name="strictly_surface">#FAFAFA</color>

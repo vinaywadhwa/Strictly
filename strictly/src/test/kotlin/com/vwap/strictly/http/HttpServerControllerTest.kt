@@ -15,6 +15,14 @@ import java.net.InetAddress
 import java.net.ServerSocket
 
 /**
+ * Mirrors [HttpServerController.FALLBACK_WINDOW]. Kept in sync by hand: the
+ * production constant is private to its companion (correct for the runtime
+ * type), so test infrastructure re-declares the value rather than relaxing
+ * visibility for a single test consumer.
+ */
+private const val CONTROLLER_FALLBACK_WINDOW = 4
+
+/**
  * Covers the four bugs that hid in this controller before the morning of
  * 2026-05-15:
  *
@@ -53,6 +61,7 @@ class HttpServerControllerTest {
             config = StrictlyConfig(httpDebugPort = port),
             store = store,
             prefs = prefs,
+            packageName = "com.test.app",
             versionName = "test/0.0.0",
         ).also { controllers += it }
 
@@ -67,6 +76,44 @@ class HttpServerControllerTest {
      */
     private fun blockLoopbackPort(port: Int): ServerSocket =
         ServerSocket(port, 50, InetAddress.getLoopbackAddress())
+
+    /**
+     * Block the controller's full fallback window so the bind-loop has no
+     * slot to fall through to. Required because [HttpServerController] now
+     * walks `anchor`, `anchor+1`, ..., `anchor+FALLBACK_WINDOW-1` before
+     * surfacing an error: blocking only the anchor lets the controller
+     * silently bind the next slot, which is the opposite of what these
+     * bind-failure tests intend to assert.
+     */
+    private fun blockLoopbackWindow(anchor: Int): List<ServerSocket> =
+        (0 until CONTROLLER_FALLBACK_WINDOW).map { offset ->
+            ServerSocket(anchor + offset, 50, InetAddress.getLoopbackAddress())
+        }
+
+    /**
+     * Find an anchor port where the entire fallback window is bindable, so
+     * a subsequent [blockLoopbackWindow] call cannot race with an external
+     * process that grabbed one of the adjacent slots between probe and
+     * block. Retries because freePort() returns a single port and the next
+     * three are not guaranteed to be free.
+     */
+    private fun freeWindowAnchor(): Int {
+        repeat(50) {
+            val candidate = freePort()
+            val holders = mutableListOf<ServerSocket>()
+            try {
+                for (offset in 0 until CONTROLLER_FALLBACK_WINDOW) {
+                    holders += ServerSocket(candidate + offset, 50, InetAddress.getLoopbackAddress())
+                }
+                return candidate
+            } catch (_: Exception) {
+                // Some offset was taken. Try a fresh anchor.
+            } finally {
+                holders.forEach { runCatching { it.close() } }
+            }
+        }
+        error("Could not find $CONTROLLER_FALLBACK_WINDOW consecutive free ports after 50 attempts")
+    }
 
     @Test
     fun `desired tracks prefs, not running`() {
@@ -85,30 +132,30 @@ class HttpServerControllerTest {
 
     @Test
     fun `failed bind leaves desired on while running is off and lastError is set`() {
-        val port = freePort()
-        val blocker = blockLoopbackPort(port)
+        val anchor = freeWindowAnchor()
+        val blockers = blockLoopbackWindow(anchor)
         try {
-            val controller = makeController(port)
+            val controller = makeController(anchor)
             controller.setEnabled(true)
 
             assertThat(controller.desired.value).isTrue()
             assertThat(controller.running.value).isFalse()
-            assertThat(controller.lastError.value).contains("$port")
+            assertThat(controller.lastError.value).contains("$anchor")
             assertThat(controller.lastError.value).contains("busy")
         } finally {
-            blocker.close()
+            blockers.forEach { runCatching { it.close() } }
         }
     }
 
     @Test
     fun `retry clears lastError on successful rebind`() {
-        val port = freePort()
-        val blocker = blockLoopbackPort(port)
-        val controller = makeController(port)
+        val anchor = freeWindowAnchor()
+        val blockers = blockLoopbackWindow(anchor)
+        val controller = makeController(anchor)
         controller.setEnabled(true)
         assertThat(controller.lastError.value).isNotNull()
 
-        blocker.close()
+        blockers.forEach { runCatching { it.close() } }
         controller.retry()
 
         assertThat(controller.lastError.value).isNull()
@@ -117,10 +164,10 @@ class HttpServerControllerTest {
 
     @Test
     fun `setEnabled false clears lastError`() {
-        val port = freePort()
-        val blocker = blockLoopbackPort(port)
+        val anchor = freeWindowAnchor()
+        val blockers = blockLoopbackWindow(anchor)
         try {
-            val controller = makeController(port)
+            val controller = makeController(anchor)
             controller.setEnabled(true)
             assertThat(controller.lastError.value).isNotNull()
 
@@ -129,7 +176,7 @@ class HttpServerControllerTest {
             assertThat(controller.running.value).isFalse()
             assertThat(controller.desired.value).isFalse()
         } finally {
-            blocker.close()
+            blockers.forEach { runCatching { it.close() } }
         }
     }
 

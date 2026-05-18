@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Dark-mode brand override. Mirrors the Compose dark color scheme: zinc-200
+  primary on a near-black surface keeps the colorized notification card
+  legible against system dark backgrounds without losing the neutral
+  graphite identity.
+-->
+<resources>
+    <color name="strictly_brand_primary">#E4E4E7</color>
+    <color name="strictly_brand_on_primary">#FF18181B</color>
+</resources>
